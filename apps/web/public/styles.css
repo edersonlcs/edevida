@@ -173,24 +173,23 @@ body {
 }
 
 .chart-card {
-  height: 300px;
-  min-height: 300px;
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
+  display: block;
 }
 
 .chart-card h3 {
   margin-bottom: 0.6rem;
 }
 
+.chart-box {
+  width: 100%;
+}
+
 .chart-card canvas {
+  position: relative;
   display: block;
-  flex: 1 1 auto;
-  min-height: 0;
   width: 100% !important;
-  height: 220px !important;
-  max-height: 220px;
+  height: clamp(180px, 22vw, 300px) !important;
 }
 
 .grid-2 {

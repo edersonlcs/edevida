@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/web/styles.css" />
+    <link rel="stylesheet" href="/web/styles.css?v=20260317b" />
   </head>
   <body>
     <div class="bg-layer"></div>
@@ -60,17 +60,23 @@
         <section class="charts-grid">
           <article class="card chart-card">
             <h3>Peso (kg)</h3>
-            <canvas id="chart-weight"></canvas>
+            <div class="chart-box">
+              <canvas id="chart-weight"></canvas>
+            </div>
           </article>
 
           <article class="card chart-card">
             <h3>Gordura corporal (%)</h3>
-            <canvas id="chart-fat"></canvas>
+            <div class="chart-box">
+              <canvas id="chart-fat"></canvas>
+            </div>
           </article>
 
           <article class="card chart-card">
             <h3>Hidratação diária (ml)</h3>
-            <canvas id="chart-hydration"></canvas>
+            <div class="chart-box">
+              <canvas id="chart-hydration"></canvas>
+            </div>
           </article>
         </section>
 
@@ -255,6 +261,6 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-    <script src="/web/app.js" type="module"></script>
+    <script src="/web/app.js?v=20260317b" type="module"></script>
   </body>
 </html>
