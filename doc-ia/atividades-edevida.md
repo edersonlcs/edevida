@@ -9,6 +9,7 @@
    - eu valido com voce o que foi feito;
    - eu te mostro a mensagem de commit sugerida;
    - somente com sua autorizacao eu faco commit e push.
+5. Exigencia fixa: sempre seguir este arquivo como fonte oficial de passos: `doc-ia/atividades-edevida.md`.
 
 ---
 
@@ -112,11 +113,18 @@ Este sera o pacote de dados que vamos preparar para acompanhar sua evolucao.
 
 7. **Rotina de alimentacao e treino**
    - refeicoes registradas (texto, audio, foto)
-   - ingestao de agua
+   - ingestao de agua (ml por dia, horarios, meta diaria)
    - treinos planejados e executados
    - tempo de sono e recuperacao
 
 Observacao: no MVP vamos priorizar peso, altura, medidas principais, exames de checkup e bioimpedancia.
+
+8. **Avaliacao de qualidade da refeicao/bebida (IA)**
+   - otimo
+   - bom
+   - ainda pode, mas pouco
+   - ruim
+   - nunca coma
 
 ---
 
@@ -188,6 +196,22 @@ Regra de marcacao:
 
 ---
 
+## Registro de Ambiente VPS (durante Atividade 1)
+
+Status atual de instalacoes na VPS:
+
+- [x] `psql` (PostgreSQL client) instalado e conexao validada no Supabase
+- [x] `supabase` CLI instalado (binario oficial)
+- [x] `pm2` instalado
+- [x] `pnpm` instalado
+- [x] `nginx` instalado
+- [x] `certbot` e `python3-certbot-nginx` instalados
+- [ ] `cloudflared` (nao instalado por escolha sua, pois voce ja possui configuracao)
+
+Objetivo deste registro: facilitar auditoria futura do que foi preparado na VPS.
+
+---
+
 ## ATIVIDADE 1 (Detalhada) - Preparacao de contas, chaves e ambiente
 
 ## Resultado esperado da Atividade 1
@@ -200,7 +224,8 @@ Ao final desta atividade voce tera:
 4. Arquivo `.env` local preenchido (sem subir segredo no GitHub).
 5. Escopo de dados de acompanhamento validado (nutricionista + personal).
 6. Documento inicial da persona da IA criado.
-7. Checklist de validacao concluido.
+7. VPS com ferramentas base instaladas para operar e testar.
+8. Checklist de validacao concluido.
 
 ---
 
@@ -262,12 +287,12 @@ TELEGRAM_BOT_TOKEN=
 TELEGRAM_WEBHOOK_SECRET=
 
 OPENAI_API_KEY=
-OPENAI_MODEL_TEXT=gpt-4.1-mini
-OPENAI_MODEL_VISION=gpt-4.1-mini
+OPENAI_MODEL_TEXT=gpt-5-mini
+OPENAI_MODEL_VISION=gpt-5-mini
 OPENAI_MODEL_TRANSCRIBE=gpt-4o-mini-transcribe
 
 SUPABASE_URL=
-SUPABASE_ANON_KEY=
+SUPABASE_PUBLISHABLE_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 
 APP_TIMEZONE=America/Sao_Paulo
@@ -275,6 +300,7 @@ APP_TIMEZONE=America/Sao_Paulo
 
 Observacoes:
 - Os nomes dos modelos podem ser ajustados depois por custo/qualidade.
+- Padrao sugerido para custo/beneficio atual: `gpt-5-mini` (texto e visao) + `gpt-4o-mini-transcribe` (audio).
 - A `SUPABASE_SERVICE_ROLE_KEY` fica apenas no backend.
 
 ---
@@ -288,6 +314,8 @@ Antes de codar, vamos confirmar que o app tera espaco para os dados que voce que
 3. Exames medicos de checkup.
 4. Resultados de bioimpedancia.
 5. Dados de treino e limitacoes fisicas.
+6. Controle de agua (meta diaria e registro em ml).
+7. Classificacao da qualidade da alimentacao em 5 niveis.
 
 Se quiser incluir algo extra (ex: pressao arterial, frequencia cardiaca de repouso), entrara neste passo.
 
@@ -301,30 +329,61 @@ Criar um arquivo de referencia para guiar todas as respostas da IA, com:
 2. Tom: claro, direto, acolhedor e sem julgamentos.
 3. Regras:
    - sempre considerar seus dados historicos (peso, exames, bioimpedancia, rotina);
+   - sempre analisar o que comer e o que beber, com recomendacao objetiva;
+   - sempre dizer qualidade da refeicao/bebida em: `otimo`, `bom`, `ainda pode, mas pouco`, `ruim`, `nunca coma`;
    - evitar afirmar diagnostico medico;
    - quando detectar sinal de risco, orientar procura de profissional de saude;
    - responder com orientacao pratica e proximo passo objetivo.
 4. Formato padrao de resposta:
-   - analise curta;
+   - analise curta da refeicao/bebida;
+   - classificacao de qualidade (5 niveis);
    - impacto esperado;
-   - recomendacao de acao.
+   - recomendacao de acao (o que comer/beber agora e proximo horario).
 5. Restricoes:
    - nao inventar valores nutricionais sem sinalizar estimativa;
    - nao substituir conduta medica.
 
+Arquivo de referencia da persona:
+- `doc-ia/persona-ia-edevida.md`
+
 ---
 
-## Passo 7 - Checklist de validacao da Atividade 1
+## Passo 7 - Preparar VPS base para operacao (localhost + hospedagem)
+
+Itens aplicados na VPS:
+
+1. Instalado `psql` e validada conexao no Supabase.
+2. Instalado `supabase` CLI para futuras migrations.
+3. Instalado `pm2` para gerenciamento de processo Node.
+4. Instalado `nginx` para reverse proxy quando necessario.
+5. Instalado `certbot` + plugin nginx para SSL (quando usar dominio direto no servidor).
+6. Mantido `cloudflared` fora da instalacao por decisao sua (ja possui configuracao separada).
+
+Observacao de formato:
+- Para seu uso com Zero Trust, a aplicacao pode rodar em `127.0.0.1`.
+- Para migracao futura em hospedagem Node gerenciada, ajustar `APP_HOST` para `0.0.0.0` quando exigido.
+
+Arquivos base preparados nesta etapa:
+- `apps/api/src/server.js` (endpoint `/health`)
+- `apps/api/package.json` (scripts `start` e `dev`)
+- `infra/deploy/pm2/ecosystem.config.cjs`
+- `infra/deploy/nginx/edevida.localhost.conf.example`
+- `infra/deploy/README.md`
+
+---
+
+## Passo 8 - Checklist de validacao da Atividade 1
 
 Marque cada item quando concluir:
 
-- [ ] Tenho projeto Supabase criado.
-- [ ] Guardei URL e chaves do Supabase.
+- [x] Tenho projeto Supabase criado.
+- [x] Guardei URL e chaves do Supabase.
 - [ ] Tenho bot Telegram criado e token salvo.
-- [ ] Tenho chave da OpenAI criada.
-- [ ] Tenho validado quais dados vou registrar no acompanhamento.
-- [ ] Tenho definido como a persona da IA deve responder.
-- [ ] Entendi quais segredos nunca vao para GitHub.
+- [x] Tenho chave da OpenAI criada.
+- [x] Tenho validado quais dados vou registrar no acompanhamento.
+- [x] Tenho definido como a persona da IA deve responder.
+- [x] Tenho VPS base preparada (psql, supabase, pm2, nginx, certbot).
+- [x] Entendi quais segredos nunca vao para GitHub.
 
 Se qualquer item nao estiver ok, ficamos nesta atividade ate resolver.
 
