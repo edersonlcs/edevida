@@ -183,16 +183,16 @@ Regra de marcacao:
 - [x] Atividade 2 - Inicializacao do projeto Node.js e estrutura de pastas
 - [x] Atividade 3 - Criar projeto Supabase e banco inicial
 - [x] Atividade 4 - Configurar bot Telegram e webhook
-- [ ] Atividade 5 - Integrar OpenAI (texto) para analise nutricional
-- [ ] Atividade 6 - Definir persona da IA nutricionista (OpenAI)
-- [ ] Atividade 7 - Integrar foto de refeicao (visao) e registrar no banco
-- [ ] Atividade 8 - Integrar audio (transcricao) e registrar no banco
-- [ ] Atividade 9 - Registrar e analisar exames medicos e bioimpedancia
-- [ ] Atividade 10 - Criar regras de relatorio diario/semanal
-- [ ] Atividade 11 - Criar painel web inicial
-- [ ] Atividade 12 - Deploy na VPS (producao atual)
-- [ ] Atividade 13 - Preparar migracao para Hostinger (Node hosting)
-- [ ] Atividade 14 - Preparar base para modulo futuro de atividade fisica
+- [x] Atividade 5 - Integrar OpenAI (texto) para analise nutricional
+- [x] Atividade 6 - Definir persona da IA nutricionista (OpenAI)
+- [x] Atividade 7 - Integrar foto de refeicao (visao) e registrar no banco
+- [x] Atividade 8 - Integrar audio (transcricao) e registrar no banco
+- [x] Atividade 9 - Registrar e analisar exames medicos e bioimpedancia
+- [x] Atividade 10 - Criar regras de relatorio diario/semanal
+- [x] Atividade 11 - Criar painel web inicial
+- [x] Atividade 12 - Deploy na VPS (producao atual)
+- [x] Atividade 13 - Preparar migracao para Hostinger (Node hosting)
+- [x] Atividade 14 - Preparar base para modulo futuro de atividade fisica
 
 ---
 
@@ -417,3 +417,117 @@ Descricao sugerida do commit:
 - inclui exames medicos, bioimpedancia e persona da IA no planejamento
 - define fluxo de execucao uma atividade por vez
 ```
+
+---
+
+## Registro de Execucao - Rodada Completa (2026-03-17)
+
+Este bloco registra o que foi implementado e validado na sequencia das Atividades 5 a 14.
+
+### Atividade 5 - OpenAI texto
+
+Entregue:
+- servico `nutritionAiService` com schema JSON estruturado
+- classificacao obrigatoria de qualidade em 5 niveis
+- persistencia em `nutrition_entries`, `hydration_logs` e `ai_interactions`
+- fallback seguro para indisponibilidade/quota da OpenAI
+
+Validacao:
+- webhook processando mensagem e respondendo sem derrubar a API mesmo quando a OpenAI falha
+
+### Atividade 6 - Persona IA
+
+Entregue:
+- documento `doc-ia/persona-ia-edevida.md` como fonte principal da persona
+- carregamento da persona no backend via `personaService`
+- regras de resposta padronizadas no prompt do sistema
+
+### Atividade 7 - Foto de refeicao (visao)
+
+Entregue:
+- processamento de foto Telegram (`message.photo`)
+- download do arquivo via API do Telegram
+- analise de imagem com modelo de visao OpenAI
+- registro da analise no Supabase com `input_type=photo`
+
+### Atividade 8 - Audio (transcricao)
+
+Entregue:
+- processamento de `voice` e `audio` do Telegram
+- download temporario em `temp/runtime`
+- transcricao com OpenAI
+- analise nutricional do texto transcrito
+- registro no Supabase com `input_type=audio`
+
+### Atividade 9 - Exames e bioimpedancia
+
+Entregue:
+- endpoints para perfil, medidas, bioimpedancia e exames:
+  - `POST/GET /api/profile`
+  - `POST/GET /api/measurements`
+  - `POST/GET /api/bioimpedance`
+  - `POST/GET /api/medical-exams`
+- suporte a marcadores de exame em JSON
+
+### Atividade 10 - Relatorios
+
+Entregue:
+- geracao de relatorios por periodo (`daily`, `weekly`, `monthly`)
+- agregacao de nutricao, hidratacao e treinos
+- tendencias de peso/gordura/massa muscular
+- persistencia em `daily_reports`
+- endpoints:
+  - `POST /api/reports/generate`
+  - `GET /api/reports`
+
+### Atividade 11 - Painel web inicial
+
+Entregue:
+- painel em `/painel` (assets em `/web/*`)
+- formularios para:
+  - analise nutricional por texto
+  - registro de agua
+  - perfil base
+  - medidas corporais
+  - bioimpedancia
+  - exame medico
+  - treino
+- visao de dashboard + ultimos relatorios
+
+### Atividade 12 - Deploy VPS
+
+Entregue:
+- `pm2`, `nginx` e `certbot` ja validados em producao
+- scripts de operacao:
+  - `infra/deploy/scripts/preflight-vps.sh`
+  - `infra/deploy/scripts/deploy-api.sh`
+- documentacao atualizada em `infra/deploy/README.md`
+
+### Atividade 13 - Migracao Hostinger
+
+Entregue:
+- guia dedicado em `infra/deploy/hostinger/README.md`
+- checklist de corte e rollback
+- variaveis de ambiente necessarias para migracao
+
+### Atividade 14 - Base modulo personal trainer
+
+Entregue:
+- endpoints de treino (`POST/GET /api/workouts`)
+- recomendacao inicial de treino:
+  - `GET /api/workouts/recommendation`
+- regra inicial conectando hidratacao + carga semanal + ultima qualidade alimentar
+
+### Validacoes executadas
+
+- [x] Sintaxe de todos os arquivos JS validada (`node --check`)
+- [x] API iniciando corretamente em ambiente de teste
+- [x] Smoke tests HTTP (health, users, profile, hidratacao, medidas, bioimpedancia, exames, treinos, dashboard, relatorios)
+- [x] `/painel` respondendo HTTP 200
+- [x] webhook Telegram respondendo com JSON valido
+
+### Ponto que depende de voce
+
+- [ ] Garantir credito/quota na OpenAI para analise completa (texto/foto/audio) sem fallback.
+
+Sem credito/quota, o sistema continua no ar e responde com aviso de indisponibilidade da IA, sem quebrar o fluxo.
