@@ -2,6 +2,8 @@ const { asyncHandler } = require("../utils/asyncHandler");
 const { resolveUserId, listUsers, createDefaultUserIfNeeded } = require("../services/userService");
 const { processTextMessage } = require("../services/telegramMessageProcessor");
 const { saveAiInteraction } = require("../services/nutritionEntryService");
+const { getUserContext } = require("../services/userContextService");
+const { chatNutritionAdvisor } = require("../services/nutritionAiService");
 const {
   upsertUserProfile,
   getUserProfile,
@@ -54,6 +56,17 @@ function normalizeRecordedAt(value) {
 
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
     return `${raw}T12:00:00-03:00`;
+  }
+
+  return raw;
+}
+
+function normalizeDateFilter(value, mode = "from") {
+  if (!value) return null;
+  const raw = String(value).trim();
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return mode === "to" ? `${raw}T23:59:59-03:00` : `${raw}T00:00:00-03:00`;
   }
 
   return raw;
@@ -117,7 +130,11 @@ const bodyMeasurementCreateController = asyncHandler(async (req, res) => {
 
 const bodyMeasurementListController = asyncHandler(async (req, res) => {
   const userId = await resolveRequestUserId(req);
-  const measurements = await listBodyMeasurements(userId, toLimit(req.query.limit, 30, 120));
+  const measurements = await listBodyMeasurements(userId, {
+    from: normalizeDateFilter(req.query.from, "from"),
+    to: normalizeDateFilter(req.query.to, "to"),
+    limit: toLimit(req.query.limit, 30, 120),
+  });
   return res.json({ ok: true, measurements });
 });
 
@@ -129,7 +146,11 @@ const bioimpedanceCreateController = asyncHandler(async (req, res) => {
 
 const bioimpedanceListController = asyncHandler(async (req, res) => {
   const userId = await resolveRequestUserId(req);
-  const records = await listBioimpedanceRecords(userId, toLimit(req.query.limit, 30, 120));
+  const records = await listBioimpedanceRecords(userId, {
+    from: normalizeDateFilter(req.query.from, "from"),
+    to: normalizeDateFilter(req.query.to, "to"),
+    limit: toLimit(req.query.limit, 30, 120),
+  });
   return res.json({ ok: true, records });
 });
 
@@ -404,7 +425,11 @@ const medicalExamUploadController = asyncHandler(async (req, res) => {
 
 const medicalExamListController = asyncHandler(async (req, res) => {
   const userId = await resolveRequestUserId(req);
-  const exams = await listMedicalExams(userId, toLimit(req.query.limit, 30, 120));
+  const exams = await listMedicalExams(userId, {
+    from: normalizeDateFilter(req.query.from, "from"),
+    to: normalizeDateFilter(req.query.to, "to"),
+    limit: toLimit(req.query.limit, 30, 120),
+  });
 
   const normalized = exams.map((exam) => ({
     ...exam,
@@ -456,7 +481,11 @@ const workoutListController = asyncHandler(async (req, res) => {
 
 const nutritionListController = asyncHandler(async (req, res) => {
   const userId = await resolveRequestUserId(req);
-  const nutrition = await listNutritionEntries(userId, toLimit(req.query.limit, 50, 300));
+  const nutrition = await listNutritionEntries(userId, {
+    from: normalizeDateFilter(req.query.from, "from"),
+    to: normalizeDateFilter(req.query.to, "to"),
+    limit: toLimit(req.query.limit, 50, 300),
+  });
   return res.json({ ok: true, nutrition });
 });
 
@@ -489,6 +518,45 @@ const nutritionTextAnalyzeController = asyncHandler(async (req, res) => {
       analyzed: false,
       reason,
       message: "Nao foi possivel analisar com OpenAI no momento.",
+      details: err.message,
+    });
+  }
+});
+
+const nutritionChatController = asyncHandler(async (req, res) => {
+  const userId = await resolveRequestUserId(req);
+  const { text } = req.body;
+
+  if (!text || typeof text !== "string") {
+    return res.status(400).json({ ok: false, error: "text obrigatorio" });
+  }
+
+  try {
+    const userContext = await getUserContext(userId);
+    const chat = await chatNutritionAdvisor(text, userContext);
+
+    await saveAiInteraction({
+      user_id: userId,
+      modality: "chat",
+      model_used: chat.modelUsed,
+      input_excerpt: text.slice(0, 3000),
+      response_text: chat.replyText,
+      response_json: { mode: "chat" },
+    }).catch(() => {});
+
+    return res.json({
+      ok: true,
+      mode: "chat",
+      replyText: chat.replyText,
+      modelUsed: chat.modelUsed,
+    });
+  } catch (err) {
+    const reason = normalizeOpenAiError(err);
+    return res.status(503).json({
+      ok: false,
+      mode: "chat",
+      reason,
+      message: "Nao foi possivel responder no modo conversa agora.",
       details: err.message,
     });
   }
@@ -556,6 +624,7 @@ module.exports = {
   workoutListController,
   nutritionListController,
   nutritionTextAnalyzeController,
+  nutritionChatController,
   reportGenerateController,
   reportListController,
   dashboardOverviewController,

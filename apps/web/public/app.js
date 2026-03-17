@@ -5,6 +5,10 @@ const state = {
     fat: null,
     hydration: null,
   },
+  filter: {
+    from: "",
+    to: "",
+  },
   cache: {
     dashboard: null,
     reports: [],
@@ -14,10 +18,23 @@ const state = {
     hydration: [],
     workouts: [],
     nutrition: [],
+    telegramWebhook: null,
   },
 };
 
 const STATUS_CLASSES = ["status-info", "status-success", "status-warning", "status-error"];
+
+const MEAL_SLOTS = [
+  { key: "cafe_da_manha", label: "Café da manhã" },
+  { key: "lanche_da_manha", label: "Lanche da manhã" },
+  { key: "almoco", label: "Almoço" },
+  { key: "lanche_da_tarde", label: "Lanche da tarde" },
+  { key: "janta", label: "Janta" },
+  { key: "ceia", label: "Ceia" },
+  { key: "outro", label: "Outro" },
+];
+
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -38,6 +55,50 @@ function fmtNumber(value, digits = 1) {
   });
 }
 
+function toNumberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function parseDateForDisplay(value) {
+  if (!value) return null;
+  const raw = String(value).trim();
+
+  if (DATE_ONLY_RE.test(raw)) {
+    const [year, month, day] = raw.split("-").map(Number);
+    return new Date(year, month - 1, day, 12, 0, 0);
+  }
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+}
+
+function parseDateForFilterBound(value, mode = "from") {
+  if (!value) return null;
+  const raw = String(value).trim();
+
+  if (DATE_ONLY_RE.test(raw)) {
+    const [year, month, day] = raw.split("-").map(Number);
+    const hours = mode === "to" ? 23 : 0;
+    const minutes = mode === "to" ? 59 : 0;
+    const seconds = mode === "to" ? 59 : 0;
+    return new Date(year, month - 1, day, hours, minutes, seconds);
+  }
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+}
+
+function fmtDate(value) {
+  if (!value) return "-";
+  const parsed = parseDateForDisplay(value);
+  if (!parsed) return String(value);
+  return parsed.toLocaleDateString("pt-BR");
+}
+
 function fmtDateTime(value) {
   if (!value) return "-";
   const parsed = new Date(value);
@@ -48,11 +109,12 @@ function fmtDateTime(value) {
   });
 }
 
-function fmtDate(value) {
-  if (!value) return "-";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return String(value);
-  return parsed.toLocaleDateString("pt-BR");
+function todayInputValue() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function compactObject(source) {
@@ -72,7 +134,6 @@ function formToObject(form) {
 function setStatus(message, type = "info") {
   const node = document.getElementById("status-message");
   if (!node) return;
-
   node.textContent = message;
   node.classList.remove(...STATUS_CLASSES);
   node.classList.add(`status-${type}`);
@@ -81,13 +142,7 @@ function setStatus(message, type = "info") {
 function writeOutput(id, value) {
   const node = document.getElementById(id);
   if (!node) return;
-
-  if (typeof value === "string") {
-    node.textContent = value;
-    return;
-  }
-
-  node.textContent = JSON.stringify(value, null, 2);
+  node.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
 }
 
 function emptyState(message) {
@@ -102,6 +157,62 @@ function qualityClass(value) {
   if (normalized === "ruim") return "quality-ruim";
   if (normalized === "nunca coma") return "quality-nunca";
   return "quality-default";
+}
+
+function toApiDateFilter(value, mode = "from") {
+  if (!value) return "";
+  const raw = String(value).trim();
+  if (DATE_ONLY_RE.test(raw)) {
+    return mode === "to" ? `${raw}T23:59:59-03:00` : `${raw}T00:00:00-03:00`;
+  }
+  return raw;
+}
+
+function toComparableTimestamp(value, mode = "from") {
+  const parsed = parseDateForFilterBound(value, mode);
+  if (!parsed) return null;
+  return parsed.getTime();
+}
+
+function hasActiveDateFilter() {
+  return Boolean(state.filter.from || state.filter.to);
+}
+
+function passesCurrentDateFilter(value) {
+  const current = toComparableTimestamp(value, "from");
+  if (current === null) return true;
+
+  const fromTs = toComparableTimestamp(state.filter.from, "from");
+  const toTs = toComparableTimestamp(state.filter.to, "to");
+
+  if (fromTs !== null && current < fromTs) return false;
+  if (toTs !== null && current > toTs) return false;
+  return true;
+}
+
+function updateFilterSummary() {
+  const node = document.getElementById("filter-summary");
+  if (!node) return;
+
+  if (!state.filter.from && !state.filter.to) {
+    node.textContent = "Período: sem filtro (todos os registros)";
+    return;
+  }
+
+  const fromLabel = state.filter.from ? fmtDate(state.filter.from) : "início";
+  const toLabel = state.filter.to ? fmtDate(state.filter.to) : "hoje";
+  node.textContent = `Período aplicado: ${fromLabel} até ${toLabel}`;
+}
+
+function currentFilterParams() {
+  const params = {};
+  if (state.filter.from) params.from = toApiDateFilter(state.filter.from, "from");
+  if (state.filter.to) params.to = toApiDateFilter(state.filter.to, "to");
+  return params;
+}
+
+function queryStringFromObject(input) {
+  return new URLSearchParams(compactObject(input)).toString();
 }
 
 async function apiJson(url, options = {}) {
@@ -194,28 +305,81 @@ function renderReports() {
   const container = document.getElementById("reports-list");
   if (!container) return;
 
-  if (!state.cache.reports.length) {
+  const filteredReports = (state.cache.reports || []).filter((report) =>
+    passesCurrentDateFilter(report.report_date || report.created_at)
+  );
+
+  if (!filteredReports.length) {
     container.innerHTML = emptyState("Sem relatórios gerados ainda.");
     return;
   }
 
-  container.innerHTML = state.cache.reports.map(buildReportCard).join("");
+  container.innerHTML = filteredReports.map(buildReportCard).join("");
 }
 
 function renderMetricCards() {
   const overview = state.cache.dashboard?.overview;
-  if (!overview) return;
-
-  document.getElementById("metric-water").textContent = `${fmtNumber(overview.today.hydration_total_ml, 0)} ml`;
-  document.getElementById("metric-meals").textContent = String(overview.today.nutrition_count || 0);
-
-  const quality = overview.today.latest_nutrition?.meal_quality || "sem registro";
+  const waterNode = document.getElementById("metric-water");
+  const waterSubNode = document.getElementById("metric-water-sub");
+  const mealsNode = document.getElementById("metric-meals");
   const qualityNode = document.getElementById("metric-last-quality");
-  qualityNode.textContent = quality;
-  qualityNode.className = `metric-sub tag ${qualityClass(quality)}`;
+  const workoutsNode = document.getElementById("metric-workouts");
+  const workoutMinutesNode = document.getElementById("metric-workout-minutes");
 
-  document.getElementById("metric-workouts").textContent = String(overview.week.workout_sessions || 0);
-  document.getElementById("metric-workout-minutes").textContent = `${fmtNumber(overview.week.total_workout_minutes, 0)} min`;
+  if (!waterNode || !mealsNode || !qualityNode || !workoutsNode || !workoutMinutesNode) return;
+
+  const filteredHydrationTotal = (state.cache.hydration || []).reduce(
+    (acc, item) => acc + Number(item.amount_ml || 0),
+    0
+  );
+  const filteredNutritionCount = (state.cache.nutrition || []).length;
+  const filteredWorkoutCount = (state.cache.workouts || []).length;
+  const filteredWorkoutMinutes = (state.cache.workouts || []).reduce(
+    (acc, item) => acc + Number(item.duration_minutes || 0),
+    0
+  );
+  const latestFilteredNutrition = state.cache.nutrition[0] || null;
+
+  if (hasActiveDateFilter()) {
+    waterNode.textContent = `${fmtNumber(filteredHydrationTotal, 0)} ml`;
+    mealsNode.textContent = String(filteredNutritionCount);
+
+    const quality = latestFilteredNutrition?.meal_quality || "sem registro";
+    qualityNode.textContent = quality;
+    qualityNode.className = `metric-sub tag ${qualityClass(quality)}`;
+
+    workoutsNode.textContent = String(filteredWorkoutCount);
+    workoutMinutesNode.textContent = `${fmtNumber(filteredWorkoutMinutes, 0)} min`;
+
+    if (waterSubNode) {
+      waterSubNode.textContent = "somatório do período filtrado";
+    }
+  } else {
+    if (!overview) return;
+
+    waterNode.textContent = `${fmtNumber(overview.today.hydration_total_ml, 0)} ml`;
+    mealsNode.textContent = String(overview.today.nutrition_count || 0);
+
+    const quality = overview.today.latest_nutrition?.meal_quality || "sem registro";
+    qualityNode.textContent = quality;
+    qualityNode.className = `metric-sub tag ${qualityClass(quality)}`;
+
+    workoutsNode.textContent = String(overview.week.workout_sessions || 0);
+    workoutMinutesNode.textContent = `${fmtNumber(overview.week.total_workout_minutes, 0)} min`;
+
+    if (waterSubNode) {
+      const hydrationGoal = Number(overview.today.hydration_goal_ml || 3000);
+      waterSubNode.textContent = `meta ${fmtNumber(hydrationGoal, 0)} ml`;
+    }
+  }
+
+  const latestBio =
+    state.cache.bioimpedance[0] ||
+    (!hasActiveDateFilter() ? state.cache.dashboard?.overview?.latest_bioimpedance || null : null);
+  document.getElementById("metric-bio-fat").textContent = latestBio ? `${fmtNumber(latestBio.body_fat_pct)}%` : "-";
+  document.getElementById("metric-bio-muscle").textContent = latestBio ? `${fmtNumber(latestBio.muscle_mass_kg)} kg` : "-";
+  document.getElementById("metric-bio-water").textContent = latestBio ? `${fmtNumber(latestBio.body_water_pct)}%` : "-";
+  document.getElementById("metric-bio-visceral").textContent = latestBio ? fmtNumber(latestBio.visceral_fat_level) : "-";
 }
 
 function renderHistoryList(containerId, items, toHtml) {
@@ -228,6 +392,298 @@ function renderHistoryList(containerId, items, toHtml) {
   }
 
   container.innerHTML = items.map(toHtml).join("");
+}
+
+function extractFoodItems(entry) {
+  const fromPayload = entry?.ai_payload?.food_items;
+  if (Array.isArray(fromPayload) && fromPayload.length > 0) {
+    return fromPayload
+      .map((item) => ({
+        food_name: item.food_name || "Item",
+        portion: item.portion || "porção não informada",
+        quality: item.quality || entry.meal_quality || "bom",
+        reason: item.reason || "sem observação",
+      }))
+      .slice(0, 8);
+  }
+
+  if (entry.analyzed_summary) {
+    return [
+      {
+        food_name: "Resumo da refeição",
+        portion: "geral",
+        quality: entry.meal_quality || "bom",
+        reason: entry.analyzed_summary,
+      },
+    ];
+  }
+
+  return [];
+}
+
+function mealSlotLabel(slot) {
+  return MEAL_SLOTS.find((item) => item.key === slot)?.label || "Outro";
+}
+
+function inferMealSlotByTime(dateValue) {
+  const date = new Date(dateValue || new Date().toISOString());
+  const hour = date.getHours();
+
+  if (hour >= 5 && hour < 9) return "cafe_da_manha";
+  if (hour >= 9 && hour < 11) return "lanche_da_manha";
+  if (hour >= 11 && hour < 14) return "almoco";
+  if (hour >= 14 && hour < 18) return "lanche_da_tarde";
+  if (hour >= 18 && hour < 22) return "janta";
+  return "ceia";
+}
+
+function inferMealSlotByText(text) {
+  const value = String(text || "").toLowerCase();
+  if (value.includes("cafe da manha") || value.includes("café da manhã") || value.includes("desjejum")) {
+    return "cafe_da_manha";
+  }
+  if (value.includes("lanche da manha") || value.includes("lanche da manhã")) return "lanche_da_manha";
+  if (value.includes("almoco") || value.includes("almoço")) return "almoco";
+  if (value.includes("lanche da tarde")) return "lanche_da_tarde";
+  if (value.includes("janta") || value.includes("jantar")) return "janta";
+  if (value.includes("ceia")) return "ceia";
+  return null;
+}
+
+function resolveMealSlot(entry) {
+  const slotFromPayload = entry?.ai_payload?.meal_slot;
+  if (slotFromPayload && MEAL_SLOTS.some((item) => item.key === slotFromPayload)) {
+    return slotFromPayload;
+  }
+
+  const slotFromText = inferMealSlotByText(entry.raw_input_text || entry.analyzed_summary);
+  if (slotFromText) return slotFromText;
+
+  return inferMealSlotByTime(entry.recorded_at);
+}
+
+function buildMealSlotsData(entries) {
+  const grouped = Object.fromEntries(MEAL_SLOTS.map((slot) => [slot.key, []]));
+
+  for (const entry of entries || []) {
+    const slot = resolveMealSlot(entry);
+    if (!grouped[slot]) grouped[slot] = [];
+    grouped[slot].push(entry);
+  }
+
+  return grouped;
+}
+
+function examAlertsFromMarkers(markers, limit = 3) {
+  if (!markers || typeof markers !== "object") return [];
+
+  const alerts = [];
+  for (const [name, payload] of Object.entries(markers)) {
+    const flag = String(payload?.flag || "").toLowerCase();
+    if (flag !== "high" && flag !== "low") continue;
+
+    const direction = flag === "high" ? "alto" : "baixo";
+    const value = payload?.value ?? "n/d";
+    const unit = payload?.unit ? ` ${payload.unit}` : "";
+    alerts.push(`${name}: ${value}${unit} (${direction})`);
+  }
+
+  return alerts.slice(0, limit);
+}
+
+function signalClassByRatio(ratio, goodThreshold = 1, attentionThreshold = 0.7) {
+  if (ratio >= goodThreshold) return "signal-good";
+  if (ratio >= attentionThreshold) return "signal-attention";
+  return "signal-alert";
+}
+
+function formatNutritionResult(analysisPayload) {
+  const analysis = analysisPayload?.analysis || {};
+  const foodItems = Array.isArray(analysis.food_items) ? analysis.food_items : [];
+
+  const lines = [
+    `Classificação geral: ${analysisPayload?.quality || analysis.quality || "-"}`,
+    `Refeição: ${analysis.meal_slot || "outro"}`,
+    `Resumo geral: ${analysis.summary || analysisPayload?.replyText || "-"}`,
+    `Água detectada: ${fmtNumber(analysis.water_intake_ml, 0)} ml | Meta sugerida: ${fmtNumber(analysis.water_recommended_ml, 0)} ml`,
+    `Macros estimadas: ${fmtNumber(analysis.estimated_calories, 0)} kcal | P ${fmtNumber(analysis.protein_g)}g | C ${fmtNumber(analysis.carbs_g)}g | G ${fmtNumber(analysis.fat_g)}g`,
+    "",
+    "Itens analisados:",
+  ];
+
+  if (!foodItems.length) {
+    lines.push("- Sem detalhamento item a item nesta resposta.");
+  } else {
+    for (const item of foodItems) {
+      lines.push(`- ${item.food_name}: ${item.quality} | porção ${item.portion}`);
+      lines.push(`  motivo: ${item.reason}`);
+    }
+  }
+
+  lines.push("", `Ação agora: ${analysis.action_now || "-"}`);
+  lines.push(`Próximo passo: ${analysis.next_step || "-"}`);
+
+  return lines.join("\n");
+}
+
+function renderDailyComparison() {
+  const container = document.getElementById("daily-comparison");
+  if (!container) return;
+
+  const overview = state.cache.dashboard?.overview || {};
+  const hydrationGoal = Number(overview?.today?.hydration_goal_ml || 3000);
+  const hydrationTotal = (state.cache.hydration || []).reduce((acc, item) => acc + Number(item.amount_ml || 0), 0);
+  const nutritionCount = (state.cache.nutrition || []).length;
+  const workoutSessions = state.cache.workouts || [];
+  const workoutMinutes = workoutSessions.reduce((acc, item) => acc + Number(item.duration_minutes || 0), 0);
+  const latestQuality =
+    state.cache.nutrition[0]?.meal_quality || overview?.today?.latest_nutrition?.meal_quality || "sem registro";
+
+  const waterRatio = hydrationGoal > 0 ? hydrationTotal / hydrationGoal : 0;
+  const mealsRatio = Math.min(1, nutritionCount / 4);
+  const workoutRatio = Math.min(1, workoutMinutes / 30);
+
+  const latestExam = (state.cache.exams || [])[0] || null;
+  const examAlerts = examAlertsFromMarkers(latestExam?.markers, 3);
+  const latestHints = overview?.latest_reports?.[0]?.summary?.action_hints || [];
+
+  container.innerHTML = `
+    <article class="comparison-card">
+      <h4>Seu dia registrado</h4>
+      <p><span class="signal ${signalClassByRatio(waterRatio)}">Água</span> ${fmtNumber(hydrationTotal, 0)} / ${fmtNumber(hydrationGoal, 0)} ml</p>
+      <p><span class="signal ${signalClassByRatio(mealsRatio)}">Refeições</span> ${nutritionCount} registradas (${escapeHtml(latestQuality)})</p>
+      <p><span class="signal ${signalClassByRatio(workoutRatio)}">Exercício</span> ${workoutSessions.length} sessão(ões), ${fmtNumber(workoutMinutes, 0)} min</p>
+      <p class="muted">Período atual: ${fmtDate(state.filter.from)} até ${fmtDate(state.filter.to)}</p>
+    </article>
+    <article class="comparison-card">
+      <h4>Ideal para hoje</h4>
+      <p>Água alvo: <strong>${fmtNumber(hydrationGoal, 0)} ml</strong> (distribuir durante o dia)</p>
+      <p>Refeições-alvo: <strong>4 a 6</strong> com proteína em cada uma</p>
+      <p>Treino-alvo: <strong>1 sessão</strong> de 30 a 60 min</p>
+      <p class="muted">Ajustes rápidos: ${(latestHints[0] && escapeHtml(latestHints[0])) || "seguir consistência diária"}</p>
+      ${
+        examAlerts.length
+          ? `<p class="muted">Exame recente: ${examAlerts.map((item) => escapeHtml(item)).join(" | ")}</p>`
+          : ""
+      }
+    </article>
+  `;
+}
+
+function renderWorkoutInsights() {
+  const container = document.getElementById("workout-insights");
+  if (!container) return;
+
+  const workouts = state.cache.workouts || [];
+  if (!workouts.length) {
+    container.innerHTML = emptyState("Sem treinos no período. Dica: registre até caminhadas leves.");
+    return;
+  }
+
+  const totalMinutes = workouts.reduce((acc, item) => acc + Number(item.duration_minutes || 0), 0);
+  const totalCalories = workouts.reduce((acc, item) => acc + Number(item.calories_burned_est || 0), 0);
+  const byType = new Map();
+
+  for (const workout of workouts) {
+    const key = workout.activity_type || "Treino";
+    const current = byType.get(key) || { sessions: 0, minutes: 0 };
+    current.sessions += 1;
+    current.minutes += Number(workout.duration_minutes || 0);
+    byType.set(key, current);
+  }
+
+  const topTypes = [...byType.entries()]
+    .sort((a, b) => b[1].minutes - a[1].minutes)
+    .slice(0, 3)
+    .map(([activity, data]) => `${activity}: ${data.sessions}x (${fmtNumber(data.minutes, 0)} min)`)
+    .join(" | ");
+
+  const latestList = workouts.slice(0, 4).map((item) => `
+    <article class="history-item">
+      <header><strong>${escapeHtml(item.activity_type || "Treino")}</strong></header>
+      <p>${fmtNumber(item.duration_minutes, 0)} min | Intensidade: ${escapeHtml(item.intensity || "-")}</p>
+      <p class="muted">${fmtDateTime(item.started_at || item.created_at)}</p>
+    </article>
+  `).join("");
+
+  container.innerHTML = `
+    <article class="history-item">
+      <p><strong>Total:</strong> ${workouts.length} sessão(ões), ${fmtNumber(totalMinutes, 0)} min, ${fmtNumber(totalCalories, 0)} kcal estimadas</p>
+      <p class="muted"><strong>Atividades principais:</strong> ${escapeHtml(topTypes || "-")}</p>
+    </article>
+    ${latestList}
+  `;
+}
+
+function renderNutritionDashboard() {
+  const mealsContainer = document.getElementById("nutrition-slot-cards");
+  const detailsContainer = document.getElementById("nutrition-details-list");
+  if (!mealsContainer || !detailsContainer) return;
+
+  const nutritionEntries = state.cache.nutrition || [];
+  const grouped = buildMealSlotsData(nutritionEntries);
+
+  document.getElementById("nutrition-total-entries").textContent = String(nutritionEntries.length || 0);
+
+  const hydrationTotal = (state.cache.hydration || []).reduce((acc, item) => acc + Number(item.amount_ml || 0), 0);
+  document.getElementById("nutrition-water-total").textContent = `${fmtNumber(hydrationTotal, 0)} ml`;
+
+  const workoutSessions = state.cache.workouts || [];
+  const workoutMinutes = workoutSessions.reduce((acc, item) => acc + Number(item.duration_minutes || 0), 0);
+  document.getElementById("nutrition-workouts-total").textContent = String(workoutSessions.length || 0);
+  document.getElementById("nutrition-workouts-minutes").textContent = `${fmtNumber(workoutMinutes, 0)} min`;
+
+  mealsContainer.innerHTML = MEAL_SLOTS.map((slot) => {
+    const entries = grouped[slot.key] || [];
+    const latest = entries[0];
+    const latestQuality = latest?.meal_quality || "sem registro";
+
+    return `
+      <article class="meal-card">
+        <h4>${slot.label}</h4>
+        <p><strong>${entries.length}</strong> registro(s)</p>
+        <p class="tag ${qualityClass(latestQuality)}">${escapeHtml(latestQuality)}</p>
+        <p class="muted">Último: ${latest ? fmtDateTime(latest.recorded_at) : "-"}</p>
+      </article>
+    `;
+  }).join("");
+
+  if (!nutritionEntries.length) {
+    detailsContainer.innerHTML = emptyState("Sem registros alimentares no período filtrado.");
+    return;
+  }
+
+  detailsContainer.innerHTML = nutritionEntries.map((entry) => {
+    const slot = resolveMealSlot(entry);
+    const foodItems = extractFoodItems(entry);
+
+    return `
+      <article class="history-item">
+        <header>
+          <strong>${mealSlotLabel(slot)} • ${fmtDateTime(entry.recorded_at)}</strong>
+          <span class="tag ${qualityClass(entry.meal_quality)}">${escapeHtml(entry.meal_quality || "-")}</span>
+        </header>
+
+        <p>${escapeHtml(entry.analyzed_summary || entry.raw_input_text || "Sem resumo")}</p>
+        <p class="muted">Calorias: ${fmtNumber(entry.estimated_calories, 0)} | Proteína: ${fmtNumber(entry.estimated_protein_g)}g | Carbo: ${fmtNumber(entry.estimated_carbs_g)}g</p>
+
+        <details>
+          <summary>Mais informações</summary>
+          <div class="nutrition-food-list">
+            ${foodItems.length
+              ? foodItems.map((item) => `
+                <div class="nutrition-food-item">
+                  <strong>${escapeHtml(item.food_name)} = ${escapeHtml(item.quality)}</strong>
+                  <span class="muted">Porção: ${escapeHtml(item.portion)}</span>
+                  <span>${escapeHtml(item.reason)}</span>
+                </div>
+              `).join("")
+              : `<p class="muted">Sem itens detalhados para esta refeição.</p>`}
+          </div>
+        </details>
+      </article>
+    `;
+  }).join("");
 }
 
 function renderHistories() {
@@ -244,7 +700,7 @@ function renderHistories() {
     <article class="history-item">
       <header><strong>${fmtDateTime(item.recorded_at)}</strong></header>
       <p>Gordura: <strong>${fmtNumber(item.body_fat_pct)}%</strong> | Muscular: ${fmtNumber(item.muscle_mass_kg)} kg</p>
-      <p>Água: ${fmtNumber(item.body_water_pct)}% | BMR: ${fmtNumber(item.bmr_kcal, 0)} kcal</p>
+      <p>Água: ${fmtNumber(item.body_water_pct)}% | BMR: ${fmtNumber(item.bmr_kcal, 0)} kcal | Visceral: ${fmtNumber(item.visceral_fat_level)}</p>
       <p class="muted">${escapeHtml(item.notes || "-")}</p>
     </article>
   `);
@@ -298,6 +754,143 @@ function renderHistories() {
   `);
 }
 
+function normalizeMarkerName(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function findMarkerByAliases(markers, aliases) {
+  const entries = Object.entries(markers || {});
+  for (const [name, payload] of entries) {
+    const normalized = normalizeMarkerName(name);
+    const tokens = normalized.replace(/[^a-z0-9]+/g, " ").split(" ").filter(Boolean);
+    if (
+      aliases.some((alias) => {
+        const normalizedAlias = normalizeMarkerName(alias);
+        if (normalizedAlias.length <= 3) {
+          return tokens.includes(normalizedAlias);
+        }
+        return normalized.includes(normalizedAlias);
+      })
+    ) {
+      return { name, payload };
+    }
+  }
+  return null;
+}
+
+function markerFlagTag(flag) {
+  const normalized = String(flag || "").toLowerCase();
+  if (normalized === "high") return '<span class="signal signal-alert">alto</span>';
+  if (normalized === "low") return '<span class="signal signal-attention">baixo</span>';
+  return '<span class="signal signal-good">ok</span>';
+}
+
+function renderExamPanel() {
+  const kpiContainer = document.getElementById("exam-kpi-cards");
+  const alertsContainer = document.getElementById("exam-alerts-list");
+  const timelineContainer = document.getElementById("exam-timeline-list");
+  if (!kpiContainer || !alertsContainer || !timelineContainer) return;
+
+  const exams = state.cache.exams || [];
+  if (!exams.length) {
+    kpiContainer.innerHTML = emptyState("Sem exames no período filtrado.");
+    alertsContainer.innerHTML = emptyState("Sem alertas para exibir.");
+    timelineContainer.innerHTML = emptyState("Sem linha do tempo de exames.");
+    return;
+  }
+
+  const latestWithMarkers = exams.find((exam) => exam.markers && Object.keys(exam.markers).length > 0) || exams[0];
+  const markers = latestWithMarkers?.markers || {};
+
+  const kpiDefs = [
+    { title: "Creatinina", aliases: ["creatinina"] },
+    { title: "Ureia", aliases: ["ureia", "urea"] },
+    { title: "TGO / AST", aliases: ["tgo", "ast"] },
+    { title: "TGP / ALT", aliases: ["tgp", "alt"] },
+    { title: "GGT", aliases: ["ggt", "gama gt", "gama glutamil"] },
+  ];
+
+  kpiContainer.innerHTML = kpiDefs.map((item) => {
+    const found = findMarkerByAliases(markers, item.aliases);
+    if (!found) {
+      return `
+        <article class="exam-kpi-card">
+          <h4>${item.title}</h4>
+          <p class="exam-kpi-value">sem dado</p>
+          <span class="muted">envie exame com esse marcador</span>
+        </article>
+      `;
+    }
+
+    const value = found.payload?.value ?? "n/d";
+    const unit = found.payload?.unit ? ` ${found.payload.unit}` : "";
+    const refRange = found.payload?.reference_range || "faixa de referência não informada";
+
+    return `
+      <article class="exam-kpi-card">
+        <h4>${item.title}</h4>
+        <p class="exam-kpi-value">${escapeHtml(String(value))}${escapeHtml(unit)}</p>
+        ${markerFlagTag(found.payload?.flag)}
+        <span class="muted">${escapeHtml(refRange)}</span>
+      </article>
+    `;
+  }).join("");
+
+  const markerAlerts = Object.entries(markers)
+    .filter(([, payload]) => {
+      const flag = String(payload?.flag || "").toLowerCase();
+      return flag === "high" || flag === "low";
+    })
+    .slice(0, 8);
+
+  if (!markerAlerts.length) {
+    alertsContainer.innerHTML = `
+      <article class="history-item">
+        <p><strong>Sem alertas críticos</strong> no exame mais recente.</p>
+        <p class="muted">Exame base: ${escapeHtml(latestWithMarkers.exam_name || "Exame")} (${fmtDate(latestWithMarkers.exam_date || latestWithMarkers.created_at)})</p>
+      </article>
+    `;
+  } else {
+    alertsContainer.innerHTML = markerAlerts.map(([name, payload]) => {
+      const direction = String(payload?.flag || "").toLowerCase() === "high" ? "alto" : "baixo";
+      const value = payload?.value ?? "n/d";
+      const unit = payload?.unit ? ` ${payload.unit}` : "";
+      return `
+        <article class="history-item">
+          <header>
+            <strong>${escapeHtml(name)}</strong>
+            ${markerFlagTag(payload?.flag)}
+          </header>
+          <p>Valor: <strong>${escapeHtml(String(value))}${escapeHtml(unit)}</strong> (${direction})</p>
+          <p class="muted">${escapeHtml(payload?.reference_range || "Faixa de referência não informada")}</p>
+        </article>
+      `;
+    }).join("");
+  }
+
+  timelineContainer.innerHTML = exams.map((exam) => {
+    const markersCount = Object.keys(exam.markers || {}).length;
+    const fileLink = exam.file_url
+      ? `<a class="file-link" href="${escapeHtml(exam.file_url)}" target="_blank" rel="noreferrer">Abrir anexo</a>`
+      : "<span class=\"muted\">Sem anexo</span>";
+
+    return `
+      <article class="history-item">
+        <header>
+          <strong>${escapeHtml(exam.exam_name || "Exame")}</strong>
+          <span class="muted">${fmtDate(exam.exam_date || exam.created_at)}</span>
+        </header>
+        <p>Tipo: ${escapeHtml(exam.exam_type || "-")} | Marcadores: ${markersCount}</p>
+        <p>${fileLink}</p>
+      </article>
+    `;
+  }).join("");
+}
+
 function getChartContext(id) {
   const canvas = document.getElementById(id);
   if (!canvas || typeof window.Chart === "undefined") return null;
@@ -332,7 +925,7 @@ function baseChartOptions() {
 function renderWeightChart() {
   const points = sortAscByDate(state.cache.measurements, "recorded_at")
     .filter((item) => item.weight_kg !== null && item.weight_kg !== undefined)
-    .slice(-20);
+    .slice(-30);
 
   upsertChart("weight", "chart-weight", {
     type: "line",
@@ -344,7 +937,7 @@ function renderWeightChart() {
           data: points.map((item) => Number(item.weight_kg)),
           borderColor: "#d35f2f",
           backgroundColor: "rgba(211,95,47,0.2)",
-          tension: 0.25,
+          tension: 0.22,
           pointRadius: 3,
         },
       ],
@@ -356,74 +949,102 @@ function renderWeightChart() {
 }
 
 function renderFatChart() {
-  const measurementPoints = sortAscByDate(state.cache.measurements, "recorded_at")
-    .filter((item) => item.body_fat_pct !== null && item.body_fat_pct !== undefined)
-    .map((item) => ({ date: item.recorded_at, value: Number(item.body_fat_pct) }));
-
-  const bioPoints = sortAscByDate(state.cache.bioimpedance, "recorded_at")
-    .filter((item) => item.body_fat_pct !== null && item.body_fat_pct !== undefined)
-    .map((item) => ({ date: item.recorded_at, value: Number(item.body_fat_pct) }));
-
-  const points = (measurementPoints.length > 0 ? measurementPoints : bioPoints).slice(-20);
+  const points = sortAscByDate(state.cache.bioimpedance, "recorded_at")
+    .filter((item) => {
+      const fat = toNumberOrNull(item.body_fat_pct);
+      const water = toNumberOrNull(item.body_water_pct);
+      const muscle = toNumberOrNull(item.muscle_mass_kg);
+      return fat !== null || water !== null || muscle !== null;
+    })
+    .slice(-30);
 
   upsertChart("fat", "chart-fat", {
     type: "line",
     data: {
-      labels: points.map((item) => fmtDate(item.date)),
+      labels: points.map((item) => fmtDate(item.recorded_at)),
       datasets: [
         {
-          label: "Gordura corporal (%)",
-          data: points.map((item) => item.value),
+          label: "Gordura (%)",
+          data: points.map((item) => toNumberOrNull(item.body_fat_pct)),
           borderColor: "#2f8f83",
           backgroundColor: "rgba(47,143,131,0.22)",
           tension: 0.25,
           pointRadius: 3,
+          yAxisID: "yPct",
+          spanGaps: true,
+        },
+        {
+          label: "Água corporal (%)",
+          data: points.map((item) => toNumberOrNull(item.body_water_pct)),
+          borderColor: "#267cb7",
+          backgroundColor: "rgba(38,124,183,0.2)",
+          tension: 0.25,
+          pointRadius: 3,
+          yAxisID: "yPct",
+          spanGaps: true,
+        },
+        {
+          label: "Massa muscular (kg)",
+          data: points.map((item) => toNumberOrNull(item.muscle_mass_kg)),
+          borderColor: "#d35f2f",
+          backgroundColor: "rgba(211,95,47,0.18)",
+          tension: 0.2,
+          pointRadius: 3,
+          yAxisID: "yKg",
+          spanGaps: true,
         },
       ],
     },
     options: {
       ...baseChartOptions(),
+      plugins: {
+        legend: {
+          display: true,
+          position: "bottom",
+          labels: {
+            boxWidth: 12,
+            usePointStyle: true,
+          },
+        },
+      },
+      scales: {
+        yPct: {
+          type: "linear",
+          position: "left",
+          suggestedMin: 0,
+          suggestedMax: 100,
+          title: {
+            display: true,
+            text: "%",
+          },
+        },
+        yKg: {
+          type: "linear",
+          position: "right",
+          grid: {
+            drawOnChartArea: false,
+          },
+          title: {
+            display: true,
+            text: "kg",
+          },
+        },
+      },
     },
   });
 }
 
-function hydrationSeries(logs, days = 14) {
-  const totals = {};
-  for (const item of logs || []) {
-    const dateKey = String(item.recorded_at || "").slice(0, 10);
-    if (!dateKey) continue;
-    totals[dateKey] = (totals[dateKey] || 0) + Number(item.amount_ml || 0);
-  }
-
-  const result = [];
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  for (let i = days - 1; i >= 0; i -= 1) {
-    const ref = new Date(today);
-    ref.setDate(today.getDate() - i);
-    const key = ref.toISOString().slice(0, 10);
-    result.push({
-      key,
-      label: ref.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
-      value: Number(totals[key] || 0),
-    });
-  }
-
-  return result;
-}
-
 function renderHydrationChart() {
-  const points = hydrationSeries(state.cache.hydration, 14);
+  const points = sortAscByDate(state.cache.hydration, "recorded_at").slice(-25);
 
   upsertChart("hydration", "chart-hydration", {
     type: "bar",
     data: {
-      labels: points.map((item) => item.label),
+      labels: points.map((item) => fmtDateTime(item.recorded_at)),
       datasets: [
         {
           label: "Hidratação (ml)",
-          data: points.map((item) => item.value),
+          data: points.map((item) => Number(item.amount_ml || 0)),
           backgroundColor: "rgba(38, 124, 183, 0.45)",
           borderColor: "#267cb7",
           borderWidth: 1,
@@ -443,18 +1064,56 @@ function renderCharts() {
   renderHydrationChart();
 }
 
+async function loadTelegramWebhookInfo() {
+  try {
+    const payload = await apiJson("/api/telegram/webhook-info");
+    state.cache.telegramWebhook = payload.info || null;
+  } catch (err) {
+    state.cache.telegramWebhook = {
+      error: err.message,
+    };
+  }
+}
+
+function renderTelegramInfo() {
+  const info = state.cache.telegramWebhook;
+  if (!info) {
+    writeOutput("telegram-webhook-status", "Sem dados");
+    return;
+  }
+
+  const simplified = info.error
+    ? { ok: false, error: info.error }
+    : {
+        ok: true,
+        webhook_url: info.url,
+        pending_updates: info.pending_update_count,
+        last_error_date: info.last_error_date,
+        last_error_message: info.last_error_message,
+        ip_address: info.ip_address,
+      };
+
+  writeOutput("telegram-webhook-status", simplified);
+}
+
 async function loadAllData() {
   const userId = await ensureUser();
+  const filterParams = currentFilterParams();
+
+  const common = {
+    user_id: userId,
+    ...filterParams,
+  };
 
   const [dashboard, reports, measurements, bioimpedance, exams, hydration, workouts, nutrition] = await Promise.all([
-    apiJson(`/api/dashboard/overview?user_id=${encodeURIComponent(userId)}`),
-    apiJson(`/api/reports?user_id=${encodeURIComponent(userId)}&period=daily&limit=14`),
-    apiJson(`/api/measurements?user_id=${encodeURIComponent(userId)}&limit=100`),
-    apiJson(`/api/bioimpedance?user_id=${encodeURIComponent(userId)}&limit=100`),
-    apiJson(`/api/medical-exams?user_id=${encodeURIComponent(userId)}&limit=100`),
-    apiJson(`/api/hydration?user_id=${encodeURIComponent(userId)}&limit=200`),
-    apiJson(`/api/workouts?user_id=${encodeURIComponent(userId)}&limit=100`),
-    apiJson(`/api/nutrition?user_id=${encodeURIComponent(userId)}&limit=100`),
+    apiJson(`/api/dashboard/overview?${queryStringFromObject({ user_id: userId })}`),
+    apiJson(`/api/reports?${queryStringFromObject({ user_id: userId, period: "daily", limit: 14 })}`),
+    apiJson(`/api/measurements?${queryStringFromObject({ ...common, limit: 200 })}`),
+    apiJson(`/api/bioimpedance?${queryStringFromObject({ ...common, limit: 200 })}`),
+    apiJson(`/api/medical-exams?${queryStringFromObject({ ...common, limit: 150 })}`),
+    apiJson(`/api/hydration?${queryStringFromObject({ ...common, limit: 500 })}`),
+    apiJson(`/api/workouts?${queryStringFromObject({ ...common, limit: 300 })}`),
+    apiJson(`/api/nutrition?${queryStringFromObject({ ...common, limit: 300 })}`),
   ]);
 
   state.cache.dashboard = dashboard;
@@ -467,9 +1126,16 @@ async function loadAllData() {
   state.cache.nutrition = nutrition.nutrition || [];
 
   renderMetricCards();
+  renderDailyComparison();
+  renderWorkoutInsights();
   renderReports();
   renderHistories();
+  renderExamPanel();
+  renderNutritionDashboard();
   renderCharts();
+
+  await loadTelegramWebhookInfo();
+  renderTelegramInfo();
 }
 
 function bindForm(formId, handler) {
@@ -491,8 +1157,57 @@ function bindForm(formId, handler) {
 }
 
 async function refreshAllWithStatus(successMessage = "Dados atualizados.") {
+  updateFilterSummary();
   await loadAllData();
   setStatus(successMessage, "success");
+}
+
+function setupDateFilter() {
+  const form = document.getElementById("date-filter-form");
+  const fromInput = document.getElementById("filter-from");
+  const toInput = document.getElementById("filter-to");
+  const clearButton = document.getElementById("clear-date-filter");
+
+  if (!form || !fromInput || !toInput || !clearButton) return;
+
+  const today = todayInputValue();
+  fromInput.value = today;
+  toInput.value = today;
+  state.filter.from = today;
+  state.filter.to = today;
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const fallbackDate = todayInputValue();
+    state.filter.from = fromInput.value || toInput.value || fallbackDate;
+    state.filter.to = toInput.value || fromInput.value || fallbackDate;
+    fromInput.value = state.filter.from;
+    toInput.value = state.filter.to;
+
+    try {
+      setStatus("Aplicando filtro de data...", "info");
+      await refreshAllWithStatus("Filtro aplicado.");
+    } catch (err) {
+      setStatus(`Erro ao aplicar filtro: ${err.message}`, "error");
+    }
+  });
+
+  clearButton.addEventListener("click", async () => {
+    const fallbackDate = todayInputValue();
+    fromInput.value = fallbackDate;
+    toInput.value = fallbackDate;
+    state.filter.from = fallbackDate;
+    state.filter.to = fallbackDate;
+
+    try {
+      setStatus("Voltando filtro para hoje...", "info");
+      await refreshAllWithStatus("Filtro de hoje aplicado.");
+    } catch (err) {
+      setStatus(`Erro ao aplicar hoje: ${err.message}`, "error");
+    }
+  });
+
+  updateFilterSummary();
 }
 
 function setupActions() {
@@ -526,7 +1241,7 @@ function setupActions() {
     try {
       const userId = await ensureUser();
       setStatus("Gerando recomendação de treino...", "info");
-      const payload = await apiJson(`/api/workouts/recommendation?user_id=${encodeURIComponent(userId)}`);
+      const payload = await apiJson(`/api/workouts/recommendation?${queryStringFromObject({ user_id: userId })}`);
       writeOutput("workout-recommendation", payload.recommendation);
       setStatus("Recomendação atualizada.", "success");
     } catch (err) {
@@ -539,17 +1254,26 @@ function setupActions() {
 function setupForms() {
   bindForm("nutrition-form", async (payload, form) => {
     const userId = await ensureUser();
+    const mode = payload.mode || "register";
+
+    if (mode === "chat") {
+      const chat = await apiJson("/api/nutrition/chat", {
+        method: "POST",
+        body: JSON.stringify({ user_id: userId, text: payload.text }),
+      });
+
+      writeOutput("nutrition-result", chat.replyText || "Sem resposta.");
+      form.reset();
+      setStatus("Resposta de conversa gerada (sem registro).", "success");
+      return;
+    }
 
     const analysis = await apiJson("/api/nutrition/analyze-text", {
       method: "POST",
       body: JSON.stringify({ user_id: userId, text: payload.text }),
     });
 
-    writeOutput("nutrition-result", {
-      quality: analysis.quality,
-      replyText: analysis.replyText,
-      analysis: analysis.analysis,
-    });
+    writeOutput("nutrition-result", formatNutritionResult(analysis));
 
     form.reset();
     await refreshAllWithStatus("Alimentação analisada e registrada.");
@@ -692,12 +1416,14 @@ function setupForms() {
 
 async function boot() {
   setupTabs();
+  setupDateFilter();
   setupActions();
   setupForms();
 
   try {
     setStatus("Carregando dados...", "info");
     await loadAllData();
+    updateFilterSummary();
     setStatus("Painel carregado.", "success");
   } catch (err) {
     setStatus(`Painel carregado com aviso: ${err.message}`, "warning");

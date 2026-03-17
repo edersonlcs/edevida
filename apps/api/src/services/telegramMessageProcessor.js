@@ -34,6 +34,22 @@ function inferExtension(filePathValue, contentType) {
   return ".bin";
 }
 
+function sanitizeWaterIntakePerMessage(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  if (parsed > 1500) return 0;
+  return Math.round(parsed);
+}
+
+function hasExplicitWaterAmount(text) {
+  const value = String(text || "").toLowerCase();
+  if (!value) return false;
+
+  const hasWaterWord = value.includes("agua") || value.includes("água");
+  const hasAmount = /\b\d+(?:[.,]\d+)?\s?(ml|l|litro|litros)\b/.test(value);
+  return hasWaterWord && hasAmount;
+}
+
 async function ensureRuntimeTempDir() {
   const runtimeDir = path.resolve(__dirname, "../../../../temp/runtime");
   await fs.mkdir(runtimeDir, { recursive: true });
@@ -81,10 +97,14 @@ async function persistAnalysis({
     response_json: mergedAiPayload,
   });
 
-  if (Number(parsed.water_intake_ml) > 0) {
+  let safeWaterIntakeMl = sanitizeWaterIntakePerMessage(parsed.water_intake_ml);
+  if ((inputType === "text" || inputType === "audio") && !hasExplicitWaterAmount(rawInputText)) {
+    safeWaterIntakeMl = 0;
+  }
+  if (safeWaterIntakeMl > 0) {
     await saveHydrationLog({
       user_id: appUser.id,
-      amount_ml: Number(parsed.water_intake_ml),
+      amount_ml: safeWaterIntakeMl,
       source,
       notes: `Registro automatico extraido de mensagem ${inputType}`,
     });

@@ -140,10 +140,41 @@ body {
   display: grid;
 }
 
+.filters-card {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.filters-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: end;
+}
+
+.filter-field {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 150px;
+}
+
+.filter-field span {
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+.filter-summary {
+  margin: 0 0 0 auto;
+}
+
 .metrics {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.8rem;
+}
+
+.bio-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .metric h2 {
@@ -209,6 +240,52 @@ body {
   gap: 0.6rem;
 }
 
+.comparison-grid {
+  display: grid;
+  gap: 0.7rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.comparison-card {
+  border: 1px solid rgba(19, 39, 43, 0.14);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.75);
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.42rem;
+}
+
+.comparison-card h4 {
+  margin: 0;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 1rem;
+}
+
+.signal {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  width: fit-content;
+  padding: 0.2rem 0.5rem;
+}
+
+.signal-good {
+  background: rgba(71, 164, 95, 0.2);
+  color: #2d6f3e;
+}
+
+.signal-attention {
+  background: rgba(222, 167, 39, 0.23);
+  color: #7a5d17;
+}
+
+.signal-alert {
+  background: rgba(171, 39, 39, 0.2);
+  color: #6d1414;
+}
+
 .history-item {
   border: 1px solid rgba(19, 39, 43, 0.14);
   border-radius: 12px;
@@ -227,6 +304,16 @@ body {
 
 .history-item p {
   margin: 0;
+}
+
+.history-item pre {
+  margin: 0;
+  font-size: 0.82rem;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(19, 39, 43, 0.1);
+  border-radius: 8px;
+  padding: 0.5rem;
+  overflow: auto;
 }
 
 .muted {
@@ -288,6 +375,78 @@ body {
   margin: 0;
   font-size: 0.9rem;
   color: var(--ink-soft);
+}
+
+.meal-grid {
+  display: grid;
+  gap: 0.7rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.meal-card {
+  border: 1px solid rgba(19, 39, 43, 0.14);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.75);
+  padding: 0.7rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.meal-card h4 {
+  margin: 0;
+  font-size: 1rem;
+  font-family: "Space Grotesk", sans-serif;
+}
+
+.meal-card p {
+  margin: 0;
+}
+
+.nutrition-food-list {
+  display: grid;
+  gap: 0.42rem;
+  margin-top: 0.2rem;
+}
+
+.nutrition-food-item {
+  border-left: 3px solid rgba(19, 39, 43, 0.22);
+  padding-left: 0.45rem;
+  display: grid;
+  gap: 0.18rem;
+}
+
+.exam-kpi-grid {
+  display: grid;
+  gap: 0.7rem;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.exam-kpi-card {
+  border: 1px solid rgba(19, 39, 43, 0.14);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.75);
+  padding: 0.7rem;
+  display: grid;
+  gap: 0.28rem;
+}
+
+.exam-kpi-card h4 {
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--ink-soft);
+}
+
+.exam-kpi-value {
+  margin: 0;
+  font-size: 1.18rem;
+  font-family: "Space Grotesk", sans-serif;
+}
+
+.telegram-steps {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 0.45rem;
 }
 
 h3 {
@@ -357,6 +516,16 @@ textarea {
   filter: brightness(1.02);
 }
 
+.btn-ghost {
+  border: 1px solid rgba(19, 39, 43, 0.18);
+  border-radius: 10px;
+  padding: 0.64rem 0.88rem;
+  background: rgba(255, 255, 255, 0.74);
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 600;
+}
+
 .output {
   margin: 0.6rem 0 0;
   min-height: 2.4rem;
@@ -381,12 +550,24 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .meal-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .exam-kpi-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
   .charts-grid {
     grid-template-columns: 1fr;
   }
 
   .grid-2,
   .history-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .comparison-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -404,5 +585,18 @@ textarea {
   .tabs {
     overflow-x: auto;
     white-space: nowrap;
+  }
+
+  .meal-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .exam-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .filter-summary {
+    margin: 0;
+    width: 100%;
   }
 }

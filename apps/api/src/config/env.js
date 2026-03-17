@@ -14,6 +14,7 @@ const cfg = {
   telegramWebhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET || "",
   openaiApiKey: process.env.OPENAI_API_KEY || "",
   openaiModelText: process.env.OPENAI_MODEL_TEXT || "gpt-4.1-mini",
+  openaiModelChat: process.env.OPENAI_MODEL_CHAT || "gpt-4o-mini",
   openaiModelVision: process.env.OPENAI_MODEL_VISION || "gpt-4.1-mini",
   openaiModelTranscribe: process.env.OPENAI_MODEL_TRANSCRIBE || "gpt-4o-mini-transcribe",
   supabaseUrl: process.env.SUPABASE_URL || "",

@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/web/styles.css?v=20260317b" />
+    <link rel="stylesheet" href="/web/styles.css?v=20260317g" />
   </head>
   <body>
     <div class="bg-layer"></div>
@@ -31,17 +31,40 @@
 
       <nav class="tabs card">
         <button class="tab-button is-active" data-tab="dashboard">Dashboard</button>
+        <button class="tab-button" data-tab="nutricao">Nutrição</button>
         <button class="tab-button" data-tab="registros">Registros</button>
         <button class="tab-button" data-tab="anexos">Anexos</button>
+        <button class="tab-button" data-tab="exames">Exames</button>
         <button class="tab-button" data-tab="historico">Histórico</button>
+        <button class="tab-button" data-tab="telegram">Telegram</button>
       </nav>
+
+      <section class="card filters-card">
+        <h3>Filtro por data</h3>
+        <form id="date-filter-form" class="filters-row">
+          <label class="filter-field">
+            <span>De</span>
+            <input id="filter-from" name="from" type="date" />
+          </label>
+
+          <label class="filter-field">
+            <span>Até</span>
+            <input id="filter-to" name="to" type="date" />
+          </label>
+
+          <button class="btn-secondary" type="submit">Aplicar filtro</button>
+          <button class="btn-ghost" type="button" id="clear-date-filter">Hoje</button>
+
+          <p id="filter-summary" class="muted filter-summary">Período: últimos 30 dias</p>
+        </form>
+      </section>
 
       <section id="tab-dashboard" class="tab-panel is-active">
         <section class="metrics">
           <article class="metric card">
             <h2>Água hoje</h2>
             <p id="metric-water" class="metric-value">-</p>
-            <p class="metric-sub">meta 3000 ml</p>
+            <p id="metric-water-sub" class="metric-sub">meta 3000 ml</p>
           </article>
 
           <article class="metric card">
@@ -57,23 +80,54 @@
           </article>
         </section>
 
+        <section class="metrics bio-metrics">
+          <article class="metric card">
+            <h2>Bio gordura (%)</h2>
+            <p id="metric-bio-fat" class="metric-value">-</p>
+            <p class="metric-sub">último registro</p>
+          </article>
+
+          <article class="metric card">
+            <h2>Massa muscular (kg)</h2>
+            <p id="metric-bio-muscle" class="metric-value">-</p>
+            <p class="metric-sub">último registro</p>
+          </article>
+
+          <article class="metric card">
+            <h2>Água corporal (%)</h2>
+            <p id="metric-bio-water" class="metric-value">-</p>
+            <p class="metric-sub">último registro</p>
+          </article>
+
+          <article class="metric card">
+            <h2>Gordura visceral</h2>
+            <p id="metric-bio-visceral" class="metric-value">-</p>
+            <p class="metric-sub">último registro</p>
+          </article>
+        </section>
+
+        <article class="card">
+          <h3>Hoje x Ideal</h3>
+          <div id="daily-comparison" class="comparison-grid"></div>
+        </article>
+
         <section class="charts-grid">
           <article class="card chart-card">
-            <h3>Peso (kg)</h3>
+            <h3>Peso (por registro)</h3>
             <div class="chart-box">
               <canvas id="chart-weight"></canvas>
             </div>
           </article>
 
           <article class="card chart-card">
-            <h3>Gordura corporal (%)</h3>
+            <h3>Bioimpedância principal (por registro)</h3>
             <div class="chart-box">
               <canvas id="chart-fat"></canvas>
             </div>
           </article>
 
           <article class="card chart-card">
-            <h3>Hidratação diária (ml)</h3>
+            <h3>Hidratação por registro (ml)</h3>
             <div class="chart-box">
               <canvas id="chart-hydration"></canvas>
             </div>
@@ -81,8 +135,45 @@
         </section>
 
         <article class="card">
+          <h3>Exercícios do período</h3>
+          <div id="workout-insights" class="history-list"></div>
+        </article>
+
+        <article class="card">
           <h3>Relatórios recentes</h3>
           <div id="reports-list" class="history-list"></div>
+        </article>
+      </section>
+
+      <section id="tab-nutricao" class="tab-panel">
+        <article class="card">
+          <h3>Dashboard alimentar</h3>
+          <div id="nutrition-slot-cards" class="meal-grid"></div>
+        </article>
+
+        <section class="metrics">
+          <article class="metric card">
+            <h2>Água no período</h2>
+            <p id="nutrition-water-total" class="metric-value">-</p>
+            <p class="metric-sub">somatório do filtro</p>
+          </article>
+
+          <article class="metric card">
+            <h2>Exercícios no período</h2>
+            <p id="nutrition-workouts-total" class="metric-value">-</p>
+            <p id="nutrition-workouts-minutes" class="metric-sub">0 min</p>
+          </article>
+
+          <article class="metric card">
+            <h2>Refeições no período</h2>
+            <p id="nutrition-total-entries" class="metric-value">-</p>
+            <p class="metric-sub">entradas analisadas</p>
+          </article>
+        </section>
+
+        <article class="card">
+          <h3>Detalhado de alimentação</h3>
+          <div id="nutrition-details-list" class="history-list"></div>
         </article>
       </section>
 
@@ -91,13 +182,17 @@
           <article class="card">
             <h3>Analisar alimentação (texto)</h3>
             <form id="nutrition-form" class="stack">
+              <select name="mode">
+                <option value="register">Registrar refeição (com gravação)</option>
+                <option value="chat">Somente conversar (sem registrar)</option>
+              </select>
               <textarea
                 name="text"
                 rows="4"
                 placeholder="Ex.: Almoço: arroz, feijão, frango grelhado e 400 ml de água"
                 required
               ></textarea>
-              <button class="btn-primary" type="submit">Analisar e registrar</button>
+              <button class="btn-primary" type="submit">Enviar para IA</button>
             </form>
             <pre id="nutrition-result" class="output"></pre>
           </article>
@@ -219,6 +314,23 @@
         </article>
       </section>
 
+      <section id="tab-exames" class="tab-panel">
+        <article class="card">
+          <h3>Marcadores principais (rim e fígado)</h3>
+          <div id="exam-kpi-cards" class="exam-kpi-grid"></div>
+        </article>
+
+        <article class="card">
+          <h3>Alertas do exame mais recente</h3>
+          <div id="exam-alerts-list" class="history-list"></div>
+        </article>
+
+        <article class="card">
+          <h3>Linha do tempo de exames</h3>
+          <div id="exam-timeline-list" class="history-list"></div>
+        </article>
+      </section>
+
       <section id="tab-historico" class="tab-panel">
         <section class="history-grid">
           <article class="card">
@@ -253,14 +365,52 @@
         </section>
       </section>
 
+      <section id="tab-telegram" class="tab-panel">
+        <article class="card">
+          <h3>Como usar no Telegram (passo a passo)</h3>
+          <ol class="telegram-steps">
+            <li>Abra seu bot no Telegram e envie <code>/start</code>.</li>
+            <li>Para ver ajuda rápida, envie <code>/help</code>.</li>
+            <li>Para abrir este painel, envie <code>/painel</code>.</li>
+            <li>Para resumo completo do dia, envie <code>/resumo</code>.</li>
+            <li>Para ver foco de exames, envie <code>/exames</code>.</li>
+            <li>Para conversar sem registrar refeição, use <code>/chat sua pergunta</code>.</li>
+            <li>Para registrar alimentação, envie texto, foto ou áudio da refeição.</li>
+            <li>Para água, inclua no texto algo como: "bebi 500 ml de água".</li>
+            <li>Também pode usar os botões rápidos: <strong>Resumo de hoje</strong>, <strong>Abrir painel</strong> e <strong>Falar com IA</strong>.</li>
+            <li>Tudo que for registrado no Telegram aparece aqui no painel.</li>
+          </ol>
+        </article>
+
+        <article class="card">
+          <h3>Status do webhook Telegram</h3>
+          <pre id="telegram-webhook-status" class="output">Carregando status...</pre>
+        </article>
+
+        <article class="card">
+          <h3>Exemplos que você pode enviar</h3>
+          <div class="history-list">
+            <article class="history-item">
+              <p><strong>Café da manhã:</strong> 1 pão francês, 2 ovos e café sem açúcar.</p>
+            </article>
+            <article class="history-item">
+              <p><strong>Água:</strong> bebi 400 ml agora.</p>
+            </article>
+            <article class="history-item">
+              <p><strong>Dúvida:</strong> "Vou comer pizza hoje, como ajustar no resto do dia?"</p>
+            </article>
+          </div>
+        </article>
+      </section>
+
       <footer class="card footer">
         <p>
-          Telegram: envie texto, foto ou áudio para o bot. Comandos: <code>/start</code>, <code>/help</code>, <code>/painel</code>.
+          Telegram: envie texto, foto ou áudio para o bot. Comandos: <code>/start</code>, <code>/help</code>, <code>/painel</code>, <code>/resumo</code>, <code>/exames</code>, <code>/chat</code>.
         </p>
       </footer>
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-    <script src="/web/app.js?v=20260317b" type="module"></script>
+    <script src="/web/app.js?v=20260317g" type="module"></script>
   </body>
 </html>

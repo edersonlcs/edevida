@@ -196,6 +196,26 @@ Regra de marcacao:
 
 ---
 
+## Ajustes Pos-Feedback (17/03/2026)
+
+Melhorias aplicadas apos uso real no web/telegram:
+
+- filtro de data com padrao no dia atual;
+- painel com comparativo "Hoje x Ideal" (agua, refeicoes e exercicio);
+- bloco especifico de exercicios no dashboard;
+- detalhamento melhor da analise alimentar no formulario web (item por item);
+- modo de conversa sem registro no web (`Somente conversar`);
+- Telegram com novos comandos:
+  - `/resumo` (resumo completo do dia),
+  - `/exames` (foco em marcadores de rins/figado e alertas do exame recente),
+  - `/chat` (conversa sem registrar refeicao),
+  - deteccao de mensagem com `?` para modo conversa;
+- Telegram com atalhos no teclado (sem precisar digitar tudo): `Resumo de hoje`, `Abrir painel`, `Falar com IA`;
+- `/resumo` com fallback inteligente: se o dia estiver sem lancamentos, mostra os ultimos registros para evitar resposta "zerada" sem contexto;
+- protecao para nao registrar hidratacao automatica fora de faixa por mensagem (anti-hallucination).
+
+---
+
 ## Registro de Ambiente VPS (durante Atividade 1)
 
 Status atual de instalacoes na VPS:

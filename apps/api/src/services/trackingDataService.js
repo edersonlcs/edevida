@@ -147,13 +147,13 @@ async function createBodyMeasurement({
   return data;
 }
 
-async function listBodyMeasurements(userId, limit = 30) {
-  const { data, error } = await supabase
-    .from("body_measurements")
-    .select("*")
-    .eq("user_id", userId)
-    .order("recorded_at", { ascending: false })
-    .limit(limit);
+async function listBodyMeasurements(userId, { from, to, limit = 30 } = {}) {
+  let query = supabase.from("body_measurements").select("*").eq("user_id", userId).order("recorded_at", { ascending: false });
+
+  if (from) query = query.gte("recorded_at", from);
+  if (to) query = query.lte("recorded_at", to);
+
+  const { data, error } = await query.limit(limit);
 
   if (error) {
     throw new Error(`Erro ao listar medidas corporais: ${error.message}`);
@@ -196,13 +196,13 @@ async function createBioimpedanceRecord({
   return data;
 }
 
-async function listBioimpedanceRecords(userId, limit = 30) {
-  const { data, error } = await supabase
-    .from("bioimpedance_records")
-    .select("*")
-    .eq("user_id", userId)
-    .order("recorded_at", { ascending: false })
-    .limit(limit);
+async function listBioimpedanceRecords(userId, { from, to, limit = 30 } = {}) {
+  let query = supabase.from("bioimpedance_records").select("*").eq("user_id", userId).order("recorded_at", { ascending: false });
+
+  if (from) query = query.gte("recorded_at", from);
+  if (to) query = query.lte("recorded_at", to);
+
+  const { data, error } = await query.limit(limit);
 
   if (error) {
     throw new Error(`Erro ao listar bioimpedancia: ${error.message}`);
@@ -231,14 +231,18 @@ async function createMedicalExam({ userId, exam_name, exam_type, exam_date, mark
   return data;
 }
 
-async function listMedicalExams(userId, limit = 30) {
-  const { data, error } = await supabase
+async function listMedicalExams(userId, { from, to, limit = 30 } = {}) {
+  let query = supabase
     .from("medical_exams")
     .select("*")
     .eq("user_id", userId)
     .order("exam_date", { ascending: false })
-    .order("created_at", { ascending: false })
-    .limit(limit);
+    .order("created_at", { ascending: false });
+
+  if (from) query = query.gte("created_at", from);
+  if (to) query = query.lte("created_at", to);
+
+  const { data, error } = await query.limit(limit);
 
   if (error) {
     throw new Error(`Erro ao listar exames medicos: ${error.message}`);
@@ -331,13 +335,13 @@ async function listWorkoutSessions(userId, { from, to, limit = 100 } = {}) {
   return data || [];
 }
 
-async function listNutritionEntries(userId, limit = 50) {
-  const { data, error } = await supabase
-    .from("nutrition_entries")
-    .select("*")
-    .eq("user_id", userId)
-    .order("recorded_at", { ascending: false })
-    .limit(limit);
+async function listNutritionEntries(userId, { from, to, limit = 50 } = {}) {
+  let query = supabase.from("nutrition_entries").select("*").eq("user_id", userId).order("recorded_at", { ascending: false });
+
+  if (from) query = query.gte("recorded_at", from);
+  if (to) query = query.lte("recorded_at", to);
+
+  const { data, error } = await query.limit(limit);
 
   if (error) {
     throw new Error(`Erro ao listar refeicoes: ${error.message}`);
