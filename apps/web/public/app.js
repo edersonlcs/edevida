@@ -21,6 +21,22 @@ async function apiJson(url, options = {}) {
   return body;
 }
 
+async function apiFormData(url, formData, options = {}) {
+  const response = await fetch(url, {
+    method: "POST",
+    body: formData,
+    ...options,
+  });
+
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = body?.error || body?.message || `HTTP ${response.status}`;
+    throw new Error(message);
+  }
+
+  return body;
+}
+
 function compactObject(source) {
   const output = {};
   for (const [key, value] of Object.entries(source)) {
@@ -258,6 +274,43 @@ function setupForms() {
 
     form.reset();
     await refreshDashboard();
+  });
+
+  const bioUploadForm = document.getElementById("bioimpedance-upload-form");
+  bioUploadForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      const userId = await ensureUser();
+      const formData = new FormData(bioUploadForm);
+      formData.set("user_id", userId);
+
+      const result = await apiFormData("/api/bioimpedance/upload", formData);
+      writeOutput("bioimpedance-upload-result", result);
+
+      bioUploadForm.reset();
+      await refreshDashboard();
+      showFlash("Bioimpedancia por anexo processada.");
+    } catch (err) {
+      writeOutput("bioimpedance-upload-result", `Erro: ${err.message}`);
+    }
+  });
+
+  const examUploadForm = document.getElementById("exam-upload-form");
+  examUploadForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      const userId = await ensureUser();
+      const formData = new FormData(examUploadForm);
+      formData.set("user_id", userId);
+
+      const result = await apiFormData("/api/medical-exams/upload", formData);
+      writeOutput("exam-upload-result", result);
+
+      examUploadForm.reset();
+      showFlash("Exame por anexo processado.");
+    } catch (err) {
+      writeOutput("exam-upload-result", `Erro: ${err.message}`);
+    }
   });
 }
 

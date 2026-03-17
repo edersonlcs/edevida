@@ -1,4 +1,5 @@
 const express = require("express");
+const multer = require("multer");
 const {
   usersListController,
   userProfileUpsertController,
@@ -8,8 +9,10 @@ const {
   bodyMeasurementCreateController,
   bodyMeasurementListController,
   bioimpedanceCreateController,
+  bioimpedanceUploadController,
   bioimpedanceListController,
   medicalExamCreateController,
+  medicalExamUploadController,
   medicalExamListController,
   hydrationCreateController,
   hydrationListController,
@@ -24,6 +27,10 @@ const {
 } = require("../controllers/trackingController");
 
 const router = express.Router();
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+});
 
 router.get("/api/users", usersListController);
 
@@ -38,9 +45,11 @@ router.post("/api/measurements", bodyMeasurementCreateController);
 
 router.get("/api/bioimpedance", bioimpedanceListController);
 router.post("/api/bioimpedance", bioimpedanceCreateController);
+router.post("/api/bioimpedance/upload", upload.single("file"), bioimpedanceUploadController);
 
 router.get("/api/medical-exams", medicalExamListController);
 router.post("/api/medical-exams", medicalExamCreateController);
+router.post("/api/medical-exams/upload", upload.single("file"), medicalExamUploadController);
 
 router.get("/api/hydration", hydrationListController);
 router.post("/api/hydration", hydrationCreateController);

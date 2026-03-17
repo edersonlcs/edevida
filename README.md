@@ -60,7 +60,9 @@ curl http://127.0.0.1:3000/painel
 - `POST /api/hydration`
 - `POST /api/measurements`
 - `POST /api/bioimpedance`
+- `POST /api/bioimpedance/upload` (anexo imagem + IA)
 - `POST /api/medical-exams`
+- `POST /api/medical-exams/upload` (anexo PDF/imagem + IA)
 - `POST /api/workouts`
 - `POST /api/reports/generate`
 - `GET /api/dashboard/overview`

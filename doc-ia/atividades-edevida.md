@@ -466,8 +466,11 @@ Entregue:
   - `POST/GET /api/profile`
   - `POST/GET /api/measurements`
   - `POST/GET /api/bioimpedance`
+  - `POST /api/bioimpedance/upload` (anexo imagem + IA)
   - `POST/GET /api/medical-exams`
+  - `POST /api/medical-exams/upload` (anexo PDF/imagem + IA)
 - suporte a marcadores de exame em JSON
+- fallback quando OpenAI estiver sem credito/quota (arquivo salvo e resposta de reprocessamento)
 
 ### Atividade 10 - Relatorios
 
@@ -525,6 +528,12 @@ Entregue:
 - [x] Smoke tests HTTP (health, users, profile, hidratacao, medidas, bioimpedancia, exames, treinos, dashboard, relatorios)
 - [x] `/painel` respondendo HTTP 200
 - [x] webhook Telegram respondendo com JSON valido
+
+### Registro inicial real do usuario (17/03/2026)
+
+- [x] Bioimpedancia inicial importada de `temp/bio.jpg` (Fitdays, 08:28)
+- [x] Medicao corporal inicial sincronizada com os dados da bioimpedancia
+- [x] Limpeza dos dados de teste anteriores para iniciar historico limpo
 
 ### Ponto que depende de voce
 

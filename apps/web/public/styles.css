@@ -193,6 +193,18 @@ textarea {
   color: var(--ink-soft);
 }
 
+.upload-box {
+  margin-top: 0.9rem;
+  padding-top: 0.7rem;
+  border-top: 1px dashed rgba(19, 39, 43, 0.2);
+}
+
+.upload-title {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--ink-soft);
+}
+
 .footer p {
   margin: 0;
   color: var(--ink-soft);
