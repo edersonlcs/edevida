@@ -179,7 +179,7 @@ Objetivo: deixar estrutura pronta para personal trainer + impacto na dieta.
 Regra de marcacao:
 - Eu so marco uma atividade como concluida (`[x]`) quando voce disser que finalizou e autorizar ir para a proxima.
 
-- [ ] Atividade 1 - Preparacao de contas, chaves e ambiente local
+- [x] Atividade 1 - Preparacao de contas, chaves e ambiente local
 - [ ] Atividade 2 - Inicializacao do projeto Node.js e estrutura de pastas
 - [ ] Atividade 3 - Criar projeto Supabase e banco inicial
 - [ ] Atividade 4 - Configurar bot Telegram e webhook
@@ -207,6 +207,7 @@ Status atual de instalacoes na VPS:
 - [x] `nginx` instalado
 - [x] `certbot` e `python3-certbot-nginx` instalados
 - [ ] `cloudflared` (nao instalado por escolha sua, pois voce ja possui configuracao)
+- [x] Dominio `edevida.edexterno.com.br` respondendo em HTTP e HTTPS
 
 Objetivo deste registro: facilitar auditoria futura do que foi preparado na VPS.
 
@@ -358,6 +359,7 @@ Itens aplicados na VPS:
 4. Instalado `nginx` para reverse proxy quando necessario.
 5. Instalado `certbot` + plugin nginx para SSL (quando usar dominio direto no servidor).
 6. Mantido `cloudflared` fora da instalacao por decisao sua (ja possui configuracao separada).
+7. Dominio principal validado: `https://edevida.edexterno.com.br/health` com retorno `200`.
 
 Observacao de formato:
 - Para seu uso com Zero Trust, a aplicacao pode rodar em `127.0.0.1`.
@@ -378,7 +380,7 @@ Marque cada item quando concluir:
 
 - [x] Tenho projeto Supabase criado.
 - [x] Guardei URL e chaves do Supabase.
-- [ ] Tenho bot Telegram criado e token salvo.
+- [x] Tenho bot Telegram criado e token salvo.
 - [x] Tenho chave da OpenAI criada.
 - [x] Tenho validado quais dados vou registrar no acompanhamento.
 - [x] Tenho definido como a persona da IA deve responder.
