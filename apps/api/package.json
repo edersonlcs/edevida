@@ -2,17 +2,22 @@
   "name": "edevida-api",
   "version": "0.1.0",
   "private": true,
-  "description": "API base da EdeVida para rodar em localhost e hospedagem Node.js",
+  "description": "API principal da EdeVida (Telegram + OpenAI + Supabase)",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js"
+    "dev": "node --watch src/server.js",
+    "check": "node -e \"console.log('api-check-ok')\""
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.57.4",
     "dotenv": "^16.6.1",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "morgan": "^1.10.1",
+    "multer": "^2.0.2",
+    "openai": "^6.3.0"
   }
 }

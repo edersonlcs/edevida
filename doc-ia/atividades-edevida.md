@@ -180,7 +180,7 @@ Regra de marcacao:
 - Eu so marco uma atividade como concluida (`[x]`) quando voce disser que finalizou e autorizar ir para a proxima.
 
 - [x] Atividade 1 - Preparacao de contas, chaves e ambiente local
-- [ ] Atividade 2 - Inicializacao do projeto Node.js e estrutura de pastas
+- [x] Atividade 2 - Inicializacao do projeto Node.js e estrutura de pastas
 - [ ] Atividade 3 - Criar projeto Supabase e banco inicial
 - [ ] Atividade 4 - Configurar bot Telegram e webhook
 - [ ] Atividade 5 - Integrar OpenAI (texto) para analise nutricional
