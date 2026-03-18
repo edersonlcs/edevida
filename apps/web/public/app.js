@@ -1965,6 +1965,7 @@ function renderNutritionDashboard() {
   }
 
   const nutritionEntries = state.cache.nutrition || [];
+  const hasNutritionEntries = nutritionEntries.length > 0;
   const grouped = buildMealSlotsData(nutritionEntries);
   const calorieGoal = Number(state.cache.dashboard?.overview?.today?.nutrition_calories_goal_kcal || 2200);
   const hydrationGoalDaily = Number(state.cache.dashboard?.overview?.today?.hydration_goal_ml || 3000);
@@ -2053,11 +2054,23 @@ function renderNutritionDashboard() {
     sugar: new Set(topContributorRows(foodContributionRows, "sugar_g", { limit: 4, minValue: 1 }).map((item) => item.key)),
   };
 
-  const proteinStatus = targetStatus(totalProtein, periodProteinGoal, { mode: "range", minRatio: 0.85, maxRatio: 1.2 });
-  const carbsStatus = targetStatus(totalCarbs, periodCarbsGoal, { mode: "max" });
-  const fatStatus = targetStatus(totalFat, periodFatGoal, { mode: "max" });
-  const fatGoodStatus = targetStatus(totalFatGood, fatGoodGoalMin, { mode: "min" });
-  const fatBadStatus = targetStatus(totalFatBad, fatBadGoalMax, { mode: "max" });
+  const neutralStatus = { label: "ok", signalClass: "signal-good" };
+  const noMealsLine = "Sem refeições registradas no período.";
+  const proteinStatus = hasNutritionEntries
+    ? targetStatus(totalProtein, periodProteinGoal, { mode: "range", minRatio: 0.85, maxRatio: 1.2 })
+    : neutralStatus;
+  const carbsStatus = hasNutritionEntries
+    ? targetStatus(totalCarbs, periodCarbsGoal, { mode: "max" })
+    : neutralStatus;
+  const fatStatus = hasNutritionEntries
+    ? targetStatus(totalFat, periodFatGoal, { mode: "max" })
+    : neutralStatus;
+  const fatGoodStatus = hasNutritionEntries
+    ? targetStatus(totalFatGood, fatGoodGoalMin, { mode: "min" })
+    : neutralStatus;
+  const fatBadStatus = hasNutritionEntries
+    ? targetStatus(totalFatBad, fatBadGoalMax, { mode: "max" })
+    : neutralStatus;
 
   macrosOverviewNode.innerHTML = [
     {
@@ -2069,7 +2082,7 @@ function renderNutritionDashboard() {
       status: proteinStatus,
       lines: [
         `Proteína: ${fmtNumber(totalProtein, 1)} g (meta ${fmtNumber(periodProteinGoal, 0)} g)`,
-        deltaLine(totalProtein, periodProteinGoal, "g", 1),
+        hasNutritionEntries ? deltaLine(totalProtein, periodProteinGoal, "g", 1) : noMealsLine,
         contributorsLine(foodContributionRows, "protein_g", { unit: "g", digits: 1 }),
       ],
     },
@@ -2082,7 +2095,7 @@ function renderNutritionDashboard() {
       status: carbsStatus,
       lines: [
         `Carboidrato: ${fmtNumber(totalCarbs, 1)} g (ideal até ${fmtNumber(periodCarbsGoal, 0)} g)`,
-        deltaLine(totalCarbs, periodCarbsGoal, "g", 1),
+        hasNutritionEntries ? deltaLine(totalCarbs, periodCarbsGoal, "g", 1) : noMealsLine,
         contributorsLine(foodContributionRows, "carbs_g", { unit: "g", digits: 1 }),
       ],
     },
@@ -2095,7 +2108,7 @@ function renderNutritionDashboard() {
       status: fatStatus,
       lines: [
         `Gordura: ${fmtNumber(totalFat, 1)} g (ideal até ${fmtNumber(periodFatGoal, 0)} g)`,
-        deltaLine(totalFat, periodFatGoal, "g", 1),
+        hasNutritionEntries ? deltaLine(totalFat, periodFatGoal, "g", 1) : noMealsLine,
         contributorsLine(foodContributionRows, "fat_g", { unit: "g", digits: 1 }),
       ],
     },
@@ -2109,7 +2122,9 @@ function renderNutritionDashboard() {
       secondary: true,
       lines: [
         `Gordura boa: ${fmtNumber(totalFatGood, 1)} g (meta mínima ${fmtNumber(fatGoodGoalMin, 0)} g)`,
-        totalFatGood >= fatGoodGoalMin
+        !hasNutritionEntries
+          ? noMealsLine
+          : totalFatGood >= fatGoodGoalMin
           ? "Dentro da faixa mínima para gordura de melhor qualidade."
           : `Faltam: ${fmtNumber(Math.max(0, fatGoodGoalMin - totalFatGood), 1)} g`,
         contributorsLine(foodContributionRows, "fat_good_g", { unit: "g", digits: 1 }),
@@ -2125,7 +2140,7 @@ function renderNutritionDashboard() {
       secondary: true,
       lines: [
         `Gordura ruim: ${fmtNumber(totalFatBad, 1)} g (ideal até ${fmtNumber(fatBadGoalMax, 0)} g)`,
-        deltaLine(totalFatBad, fatBadGoalMax, "g", 1),
+        hasNutritionEntries ? deltaLine(totalFatBad, fatBadGoalMax, "g", 1) : noMealsLine,
         contributorsLine(foodContributionRows, "fat_bad_g", { unit: "g", digits: 1 }),
       ],
     },

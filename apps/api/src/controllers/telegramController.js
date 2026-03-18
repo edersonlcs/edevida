@@ -41,6 +41,21 @@ function buildTelegramMainKeyboard() {
   };
 }
 
+function buildTelegramChatKeyboard() {
+  return {
+    keyboard: [
+      [{ text: "Sair do modo conversa" }],
+      [{ text: "Sugestao proxima refeicao" }, { text: "Plano de hoje" }],
+      [{ text: "Resumo de hoje" }, { text: "Nutricao de hoje" }],
+      [{ text: "Status do corpo" }, { text: "Exames" }],
+      [{ text: "Painel" }, { text: "Help" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+    input_field_placeholder: "Modo conversa ativo. Envie sua pergunta.",
+  };
+}
+
 function buildTelegramDraftKeyboard() {
   return {
     keyboard: [
@@ -85,6 +100,8 @@ async function safeReply(chatId, text, replyToMessageId, extra = {}) {
 
 const DRAFT_TTL_MS = 1000 * 60 * 60 * 6;
 const nutritionDraftStore = new Map();
+const CHAT_MODE_TTL_MS = 1000 * 60 * 60 * 12;
+const chatModeStore = new Map();
 
 const QUALITY_RANK = {
   otimo: 5,
@@ -151,6 +168,33 @@ function setNutritionDraft(appUserId, chatId, draft) {
 
 function clearNutritionDraft(appUserId, chatId) {
   nutritionDraftStore.delete(getDraftKey(appUserId, chatId));
+}
+
+function getChatModeKey(appUserId, chatId) {
+  return `${appUserId}:${chatId}`;
+}
+
+function enableChatMode(appUserId, chatId) {
+  chatModeStore.set(getChatModeKey(appUserId, chatId), {
+    updatedAt: Date.now(),
+  });
+}
+
+function disableChatMode(appUserId, chatId) {
+  chatModeStore.delete(getChatModeKey(appUserId, chatId));
+}
+
+function isChatModeActive(appUserId, chatId) {
+  const mode = chatModeStore.get(getChatModeKey(appUserId, chatId));
+  if (!mode) return false;
+
+  if (Date.now() - mode.updatedAt > CHAT_MODE_TTL_MS) {
+    chatModeStore.delete(getChatModeKey(appUserId, chatId));
+    return false;
+  }
+
+  mode.updatedAt = Date.now();
+  return true;
 }
 
 function rankQuality(value) {
@@ -862,6 +906,14 @@ function detectShortcutIntent(rawText) {
     return "draft_preview";
   }
 
+  if (["falar com ia", "/conversa", "/modo_conversa"].includes(normalized)) {
+    return "chat_on";
+  }
+
+  if (["sair do modo conversa", "sair modo conversa", "/sairchat", "/sair_conversa"].includes(normalized)) {
+    return "chat_off";
+  }
+
   if (["conversar com ia", "modo chat", "chat"].includes(normalized)) {
     return "chat_help";
   }
@@ -880,8 +932,6 @@ function parseQuickChatButtonPrompt(rawText) {
       "Me sugira a proxima refeicao de forma simples, com porcoes e foco no meu objetivo.",
     "plano de hoje":
       "Monte um plano curto para o restante de hoje com base no meu status corporal e exames.",
-    "falar com ia":
-      "Converse comigo como nutricionista pessoal e me oriente com foco em praticidade hoje.",
   };
 
   return quickPrompts[normalized] || null;
@@ -1048,7 +1098,7 @@ function parseChatCommand(text) {
   return raw.slice(5).trim();
 }
 
-async function runChatMode({ appUser, text, chatId, replyToMessageId }) {
+async function runChatMode({ appUser, text, chatId, replyToMessageId, persistentMode = false }) {
   const userContext = await getUserContext(appUser.id);
   const chat = await chatNutritionAdvisor(text, userContext);
 
@@ -1061,8 +1111,13 @@ async function runChatMode({ appUser, text, chatId, replyToMessageId }) {
     response_json: { mode: "chat" },
   }).catch(() => {});
 
-  const reply = ["Modo conversa (sem registro automático).", "", chat.replyText].join("\n");
-  await safeReply(chatId, reply, replyToMessageId);
+  const reply = persistentMode
+    ? chat.replyText
+    : ["Modo conversa (sem registro automático).", "", chat.replyText].join("\n");
+
+  await safeReply(chatId, reply, replyToMessageId, {
+    reply_markup: persistentMode ? buildTelegramChatKeyboard() : buildTelegramMainKeyboard(),
+  });
 }
 
 async function buildTelegramNutritionSummary(userId) {
@@ -1381,6 +1436,7 @@ function getTelegramHelpText() {
     "/exames - mostra acompanhamento dos exames",
     "/rascunho - mostra o rascunho atual antes de registrar",
     "/chat <pergunta> - conversa sem registrar refeicao",
+    "/sairchat - sai do modo conversa persistente",
     "",
     "Botoes diarios: Resumo de hoje, Nutricao de hoje, Status do corpo, Exames, Sugestao proxima refeicao, Plano de hoje, Falar com IA, Rascunho atual, Registrar refeicao, Painel e Help.",
     "",
@@ -1440,17 +1496,45 @@ const telegramWebhookController = asyncHandler(async (req, res) => {
     const shortcutIntent = detectShortcutIntent(rawText);
     const quickChatButtonPrompt = parseQuickChatButtonPrompt(rawText);
     const draftAction = resolveDraftAction(rawText);
+    const chatModeActive = isChatModeActive(appUser.id, message.chat.id);
 
     if (shortcutIntent === "help" || normalizedText === "/start" || normalizedText === "/help") {
       await safeReply(message.chat.id, getTelegramHelpText(), message.message_id);
       return res.json({ ok: true, handled: "help" });
     }
 
+    if (shortcutIntent === "chat_on") {
+      enableChatMode(appUser.id, message.chat.id);
+      await safeReply(
+        message.chat.id,
+        [
+          "Modo conversa ativado.",
+          "Agora pode falar normalmente sem /chat.",
+          "Quando quiser sair, toque em: Sair do modo conversa.",
+        ].join("\n"),
+        message.message_id,
+        { reply_markup: buildTelegramChatKeyboard() }
+      );
+      return res.json({ ok: true, handled: "chat_on" });
+    }
+
+    if (shortcutIntent === "chat_off") {
+      disableChatMode(appUser.id, message.chat.id);
+      await safeReply(
+        message.chat.id,
+        "Modo conversa desativado. Voltei para o menu normal.",
+        message.message_id,
+        { reply_markup: buildTelegramMainKeyboard() }
+      );
+      return res.json({ ok: true, handled: "chat_off" });
+    }
+
     if (shortcutIntent === "panel") {
       await safeReply(
         message.chat.id,
         `Painel web: ${cfg.appBaseUrl}/painel`,
-        message.message_id
+        message.message_id,
+        chatModeActive ? { reply_markup: buildTelegramChatKeyboard() } : {}
       );
       return res.json({ ok: true, handled: "painel" });
     }
@@ -1458,7 +1542,12 @@ const telegramWebhookController = asyncHandler(async (req, res) => {
     if (shortcutIntent === "summary") {
       try {
         const summary = await buildTelegramDailySummary(appUser.id);
-        await safeReply(message.chat.id, summary, message.message_id);
+        await safeReply(
+          message.chat.id,
+          summary,
+          message.message_id,
+          chatModeActive ? { reply_markup: buildTelegramChatKeyboard() } : {}
+        );
         return res.json({ ok: true, handled: "resumo" });
       } catch (err) {
         const aiError = normalizeOpenAiError(err);
@@ -1470,7 +1559,12 @@ const telegramWebhookController = asyncHandler(async (req, res) => {
     if (shortcutIntent === "nutrition") {
       try {
         const nutritionSummary = await buildTelegramNutritionSummary(appUser.id);
-        await safeReply(message.chat.id, nutritionSummary, message.message_id);
+        await safeReply(
+          message.chat.id,
+          nutritionSummary,
+          message.message_id,
+          chatModeActive ? { reply_markup: buildTelegramChatKeyboard() } : {}
+        );
         return res.json({ ok: true, handled: "nutricao" });
       } catch (err) {
         const aiError = normalizeOpenAiError(err);
@@ -1482,7 +1576,12 @@ const telegramWebhookController = asyncHandler(async (req, res) => {
     if (shortcutIntent === "body_status") {
       try {
         const bodyStatus = await buildTelegramBodyStatus(appUser.id);
-        await safeReply(message.chat.id, bodyStatus, message.message_id);
+        await safeReply(
+          message.chat.id,
+          bodyStatus,
+          message.message_id,
+          chatModeActive ? { reply_markup: buildTelegramChatKeyboard() } : {}
+        );
         return res.json({ ok: true, handled: "corpo" });
       } catch (err) {
         const aiError = normalizeOpenAiError(err);
@@ -1494,7 +1593,12 @@ const telegramWebhookController = asyncHandler(async (req, res) => {
     if (shortcutIntent === "exams") {
       try {
         const examsSummary = await buildTelegramExamsSummary(appUser.id);
-        await safeReply(message.chat.id, examsSummary, message.message_id);
+        await safeReply(
+          message.chat.id,
+          examsSummary,
+          message.message_id,
+          chatModeActive ? { reply_markup: buildTelegramChatKeyboard() } : {}
+        );
         return res.json({ ok: true, handled: "exames" });
       } catch (err) {
         const aiError = normalizeOpenAiError(err);
@@ -1527,11 +1631,12 @@ const telegramWebhookController = asyncHandler(async (req, res) => {
       await safeReply(
         message.chat.id,
         [
-          "Modo conversa pronto.",
-          "Use os botoes Sugestao proxima refeicao e Plano de hoje ou envie /chat com sua pergunta.",
-          "Exemplo: /chat Estou com fome agora, o que comer?",
+          "Modo conversa: envie /chat <pergunta> para 1 resposta pontual.",
+          "Para conversa continua, toque em Falar com IA.",
+          "Para sair do modo continuo: Sair do modo conversa.",
         ].join("\n"),
-        message.message_id
+        message.message_id,
+        chatModeActive ? { reply_markup: buildTelegramChatKeyboard() } : {}
       );
       return res.json({ ok: true, handled: "chat_help" });
     }
@@ -1543,6 +1648,7 @@ const telegramWebhookController = asyncHandler(async (req, res) => {
           text: quickChatButtonPrompt,
           chatId: message.chat.id,
           replyToMessageId: message.message_id,
+          persistentMode: chatModeActive,
         });
         return res.json({ ok: true, handled: "chat_quick_button" });
       } catch (err) {
@@ -1569,6 +1675,7 @@ const telegramWebhookController = asyncHandler(async (req, res) => {
           text: chatCommandPrompt,
           chatId: message.chat.id,
           replyToMessageId: message.message_id,
+          persistentMode: chatModeActive,
         });
         return res.json({ ok: true, handled: "chat" });
       } catch (err) {
@@ -1643,6 +1750,25 @@ const telegramWebhookController = asyncHandler(async (req, res) => {
       }
     }
 
+    if (chatModeActive && !draftAction && parseChatCommand(rawText) === null) {
+      try {
+        await runChatMode({
+          appUser,
+          text: rawText,
+          chatId: message.chat.id,
+          replyToMessageId: message.message_id,
+          persistentMode: true,
+        });
+        return res.json({ ok: true, handled: "chat_persistent" });
+      } catch (err) {
+        const aiError = normalizeOpenAiError(err);
+        await safeReply(message.chat.id, aiError.userMessage, message.message_id, {
+          reply_markup: buildTelegramChatKeyboard(),
+        });
+        return res.json({ ok: true, handled: "chat_persistent", analyzed: false, reason: aiError.code });
+      }
+    }
+
     if (shouldUseChatMode(rawText)) {
       try {
         await runChatMode({
@@ -1650,6 +1776,7 @@ const telegramWebhookController = asyncHandler(async (req, res) => {
           text: rawText,
           chatId: message.chat.id,
           replyToMessageId: message.message_id,
+          persistentMode: false,
         });
         return res.json({ ok: true, handled: "chat" });
       } catch (err) {

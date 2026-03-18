@@ -619,6 +619,8 @@ Entregue:
   - Telegram alinhado ao web com menu diario simplificado e completo: `Resumo de hoje`, `Nutricao de hoje`, `Status do corpo`, `Exames`, `Sugestao proxima refeicao`, `Plano de hoje`, `Falar com IA`, `Rascunho atual`, `Registrar refeicao`, `Painel` e `Help`
   - novo comando `/nutricao` no Telegram para resumo nutricional detalhado (calorias, macros, gordura boa/ruim, sodio e acucar)
   - novo comando `/rascunho` no Telegram para revisar rapidamente o rascunho antes de registrar
+  - `Falar com IA` agora ativa modo conversa persistente no Telegram (sem precisar digitar `/chat` em toda mensagem), com botao `Sair do modo conversa`
+  - ajuste de UX na aba `Nutricao`: quando o dia/período estiver sem refeicoes, cards de macro nao marcam `abaixo`; ficam em estado neutro `ok`
   - script de reset para novo ciclo de testes: `npm run reset:test-data` (limpa dados do Supabase + arquivos em `temp/`)
   - documentacao tecnica de manutencao criada em `doc-ia/guia-tecnico-edevida.md`
 
