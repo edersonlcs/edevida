@@ -34,6 +34,68 @@ function inferExtension(filePathValue, contentType) {
   return ".bin";
 }
 
+function detectImageMimeFromBuffer(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 12) return null;
+
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return "image/jpeg";
+  }
+
+  if (
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0d &&
+    buffer[5] === 0x0a &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0x0a
+  ) {
+    return "image/png";
+  }
+
+  const riff = buffer.toString("ascii", 0, 4);
+  const webp = buffer.toString("ascii", 8, 12);
+  if (riff === "RIFF" && webp === "WEBP") {
+    return "image/webp";
+  }
+
+  const gif = buffer.toString("ascii", 0, 6);
+  if (gif === "GIF87a" || gif === "GIF89a") {
+    return "image/gif";
+  }
+
+  return null;
+}
+
+function normalizeImageMimeType(filePathValue, contentType, buffer) {
+  const normalizedType = String(contentType || "")
+    .toLowerCase()
+    .split(";")[0]
+    .trim();
+
+  if (normalizedType === "image/jpg") return "image/jpeg";
+  if (["image/jpeg", "image/png", "image/webp", "image/gif"].includes(normalizedType)) {
+    return normalizedType;
+  }
+
+  const extension = path.extname(filePathValue || "").toLowerCase();
+  const byExtension = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+  };
+
+  if (byExtension[extension]) return byExtension[extension];
+
+  const byBuffer = detectImageMimeFromBuffer(buffer);
+  if (byBuffer) return byBuffer;
+
+  return "image/jpeg";
+}
+
 function sanitizeWaterIntakePerMessage(value) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return 0;
@@ -66,11 +128,24 @@ async function persistAnalysis({
   modelUsed,
   rawResponse,
   extraAiPayload,
+  persist = true,
 }) {
   const mergedAiPayload = {
     ...parsed,
     ...(extraAiPayload || {}),
   };
+
+  if (!persist) {
+    return {
+      analysis: parsed,
+      replyText: formatNutritionReply(parsed),
+      modelUsed,
+      rawResponse,
+      mergedAiPayload,
+      inputType,
+      rawInputText,
+    };
+  }
 
   await saveNutritionEntry({
     user_id: appUser.id,
@@ -116,7 +191,7 @@ async function persistAnalysis({
   };
 }
 
-async function processTextMessage({ appUser, messageText, source = "telegram" }) {
+async function processTextMessage({ appUser, messageText, source = "telegram", persist = true }) {
   const userContext = await getUserContext(appUser.id);
   const { parsed, modelUsed, rawResponse } = await analyzeTextNutrition(messageText, userContext);
 
@@ -129,6 +204,7 @@ async function processTextMessage({ appUser, messageText, source = "telegram" })
     parsed,
     modelUsed,
     rawResponse,
+    persist,
   });
 }
 
@@ -140,6 +216,7 @@ async function processImageBufferInput({
   source = "web",
   inputType = "photo",
   extraAiPayload = {},
+  persist = true,
 }) {
   if (!imageBuffer || !Buffer.isBuffer(imageBuffer)) {
     throw new Error("Imagem invalida");
@@ -165,6 +242,7 @@ async function processImageBufferInput({
     modelUsed,
     rawResponse,
     extraAiPayload,
+    persist,
   });
 }
 
@@ -176,6 +254,7 @@ async function processAudioBufferInput({
   source = "web",
   inputType = "audio",
   extraAiPayload = {},
+  persist = true,
 }) {
   if (!audioBuffer || !Buffer.isBuffer(audioBuffer)) {
     throw new Error("Audio invalido");
@@ -207,34 +286,43 @@ async function processAudioBufferInput({
         ...extraAiPayload,
         transcript_text: transcription.transcriptText,
       },
+      persist,
     });
   } finally {
     await fs.unlink(tempFilePath).catch(() => {});
   }
 }
 
-async function processPhotoMessage({ appUser, message, source = "telegram" }) {
+async function processPhotoMessage({ appUser, message, source = "telegram", persist = true }) {
   const selectedPhoto = getLargestPhoto(message.photo || []);
   if (!selectedPhoto?.file_id) {
     throw new Error("Foto nao encontrada na mensagem");
   }
 
   const downloaded = await downloadFileBuffer(selectedPhoto.file_id);
+  const normalizedMimeType = normalizeImageMimeType(
+    downloaded.filePath,
+    downloaded.contentType,
+    downloaded.buffer
+  );
+
   return processImageBufferInput({
     appUser,
     imageBuffer: downloaded.buffer,
-    mimeType: downloaded.contentType,
+    mimeType: normalizedMimeType,
     caption: message.caption || "",
     source,
     inputType: "photo",
     extraAiPayload: {
       telegram_file_path: downloaded.filePath,
       telegram_content_type: downloaded.contentType,
+      telegram_content_type_normalized: normalizedMimeType,
     },
+    persist,
   });
 }
 
-async function processAudioMessage({ appUser, message, source = "telegram" }) {
+async function processAudioMessage({ appUser, message, source = "telegram", persist = true }) {
   const fileInfo = message.voice || message.audio;
   if (!fileInfo?.file_id) {
     throw new Error("Audio nao encontrado na mensagem");
@@ -252,6 +340,7 @@ async function processAudioMessage({ appUser, message, source = "telegram" }) {
       telegram_file_path: downloaded.filePath,
       telegram_content_type: downloaded.contentType,
     },
+    persist,
   });
 }
 

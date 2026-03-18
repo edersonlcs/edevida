@@ -5,9 +5,13 @@ const {
   processImageBufferInput,
   processAudioBufferInput,
 } = require("../services/telegramMessageProcessor");
-const { saveAiInteraction } = require("../services/nutritionEntryService");
+const {
+  saveAiInteraction,
+  saveHydrationLog,
+  saveNutritionEntry,
+} = require("../services/nutritionEntryService");
 const { getUserContext } = require("../services/userContextService");
-const { chatNutritionAdvisor } = require("../services/nutritionAiService");
+const { chatNutritionAdvisor, formatNutritionReply } = require("../services/nutritionAiService");
 const {
   upsertUserProfile,
   getUserProfile,
@@ -76,6 +80,168 @@ function normalizeDateFilter(value, mode = "from") {
   return raw;
 }
 
+function parsePersistFlag(value, fallback = true) {
+  if (value === undefined || value === null || value === "") return fallback;
+  const normalized = String(value).trim().toLowerCase();
+  if (["1", "true", "yes", "sim"].includes(normalized)) return true;
+  if (["0", "false", "no", "nao", "não"].includes(normalized)) return false;
+  return fallback;
+}
+
+function sanitizeWaterIntakePerMessage(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  if (parsed > 1500) return 0;
+  return Math.round(parsed);
+}
+
+function hasExplicitWaterAmount(text) {
+  const value = String(text || "").toLowerCase();
+  if (!value) return false;
+  const hasWaterWord = value.includes("agua") || value.includes("água");
+  const hasAmount = /\b\d+(?:[.,]\d+)?\s?(ml|l|litro|litros)\b/.test(value);
+  return hasWaterWord && hasAmount;
+}
+
+function normalizeInputType(value) {
+  const normalized = String(value || "").toLowerCase();
+  if (["text", "photo", "audio", "manual"].includes(normalized)) return normalized;
+  return "manual";
+}
+
+function normalizeSource(value) {
+  const normalized = String(value || "").toLowerCase();
+  if (["telegram", "web", "system"].includes(normalized)) return normalized;
+  return "web";
+}
+
+function mapInputTypeToModality(inputType) {
+  const normalized = normalizeInputType(inputType);
+  if (normalized === "photo") return "vision";
+  if (normalized === "audio") return "audio";
+  return "text";
+}
+
+const MEAL_SLOT_VALUES = [
+  "cafe_da_manha",
+  "lanche_da_manha",
+  "almoco",
+  "lanche_da_tarde",
+  "janta",
+  "ceia",
+  "outro",
+];
+
+const FOOD_QUALITY_VALUES = ["otimo", "bom", "ainda pode, mas pouco", "ruim", "nunca coma"];
+
+function normalizeMealSlot(value) {
+  const normalized = String(value || "").toLowerCase().trim();
+  if (MEAL_SLOT_VALUES.includes(normalized)) return normalized;
+  return "outro";
+}
+
+function toNumberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function toIntegerOrNull(value) {
+  const parsed = toNumberOrNull(value);
+  if (parsed === null) return null;
+  return Math.round(parsed);
+}
+
+function normalizeDraftAnalysis(input) {
+  const base = input && typeof input === "object" ? input : {};
+  const qualityValue = String(base.quality || "").toLowerCase().trim();
+  const foodItems = Array.isArray(base.food_items)
+    ? base.food_items
+        .map((item) => ({
+          food_name: String(item?.food_name || "item").slice(0, 180),
+          portion: String(item?.portion || "porcao nao informada").slice(0, 180),
+          quality: String(item?.quality || "bom").toLowerCase().trim(),
+          reason: String(item?.reason || "sem observacao").slice(0, 500),
+        }))
+        .slice(0, 30)
+    : [];
+
+  return {
+    meal_slot: normalizeMealSlot(base.meal_slot),
+    summary: String(base.summary || "").trim() || null,
+    quality: FOOD_QUALITY_VALUES.includes(qualityValue) ? qualityValue : null,
+    impact: String(base.impact || "").trim() || null,
+    action_now: String(base.action_now || "").trim() || null,
+    next_step: String(base.next_step || "").trim() || null,
+    hydration_tip: String(base.hydration_tip || "").trim() || null,
+    water_intake_ml: toIntegerOrNull(base.water_intake_ml),
+    water_recommended_ml: toIntegerOrNull(base.water_recommended_ml),
+    estimated_calories: toNumberOrNull(base.estimated_calories),
+    protein_g: toNumberOrNull(base.protein_g),
+    carbs_g: toNumberOrNull(base.carbs_g),
+    fat_g: toNumberOrNull(base.fat_g),
+    food_items: foodItems,
+  };
+}
+
+async function persistNutritionFromAnalysis({
+  userId,
+  analysis,
+  rawInputText,
+  inputType,
+  source,
+  modelUsed,
+  rawResponse,
+  extraAiPayload,
+}) {
+  const normalizedAnalysis = normalizeDraftAnalysis(analysis);
+  const mergedAiPayload = {
+    ...normalizedAnalysis,
+    ...(extraAiPayload && typeof extraAiPayload === "object" ? extraAiPayload : {}),
+  };
+
+  const nutrition = await saveNutritionEntry({
+    user_id: userId,
+    input_type: normalizeInputType(inputType),
+    source: normalizeSource(source),
+    raw_input_text: rawInputText || "[registro web sem texto]",
+    analyzed_summary: normalizedAnalysis.summary || null,
+    meal_quality: normalizedAnalysis.quality || null,
+    recommended_action: normalizedAnalysis.action_now || null,
+    estimated_calories: normalizedAnalysis.estimated_calories ?? null,
+    estimated_protein_g: normalizedAnalysis.protein_g ?? null,
+    estimated_carbs_g: normalizedAnalysis.carbs_g ?? null,
+    estimated_fat_g: normalizedAnalysis.fat_g ?? null,
+    water_ml_recommended: normalizedAnalysis.water_recommended_ml ?? null,
+    ai_payload: mergedAiPayload,
+  });
+
+  await saveAiInteraction({
+    user_id: userId,
+    modality: mapInputTypeToModality(inputType),
+    model_used: modelUsed || "web_draft",
+    input_excerpt: String(rawInputText || "[registro web sem texto]").slice(0, 3000),
+    response_text: String(rawResponse || ""),
+    response_json: mergedAiPayload,
+  }).catch(() => {});
+
+  let safeWaterIntakeMl = sanitizeWaterIntakePerMessage(normalizedAnalysis.water_intake_ml);
+  if ((inputType === "text" || inputType === "audio") && !hasExplicitWaterAmount(rawInputText)) {
+    safeWaterIntakeMl = 0;
+  }
+
+  if (safeWaterIntakeMl > 0) {
+    await saveHydrationLog({
+      user_id: userId,
+      amount_ml: safeWaterIntakeMl,
+      source: normalizeSource(source),
+      notes: `Registro automatico extraido de rascunho ${normalizeInputType(inputType)}`,
+    }).catch(() => {});
+  }
+
+  return nutrition;
+}
+
 async function resolveRequestUserId(req) {
   return resolveUserId(req.body?.user_id || req.query?.user_id);
 }
@@ -130,6 +296,50 @@ const bodyMeasurementCreateController = asyncHandler(async (req, res) => {
   const userId = await resolveRequestUserId(req);
   const measurement = await createBodyMeasurement({ userId, ...req.body });
   return res.status(201).json({ ok: true, measurement });
+});
+
+const bodyMeasurementProgressPhotoUploadController = asyncHandler(async (req, res) => {
+  const userId = await resolveRequestUserId(req);
+  const file = req.file;
+
+  if (!file) {
+    return res.status(400).json({ ok: false, error: "Arquivo obrigatorio (campo file)" });
+  }
+
+  if (!String(file.mimetype || "").startsWith("image/")) {
+    return res.status(400).json({ ok: false, error: "Envie uma imagem valida (jpg/png/webp)." });
+  }
+
+  const storedFile = await saveUploadedFile(file);
+  const measurement = await createBodyMeasurement({
+    userId,
+    weight_kg: req.body.weight_kg,
+    body_fat_pct: req.body.body_fat_pct,
+    chest_cm: req.body.chest_cm,
+    waist_cm: req.body.waist_cm,
+    abdomen_cm: req.body.abdomen_cm,
+    hip_cm: req.body.hip_cm,
+    arm_cm: req.body.arm_cm,
+    thigh_cm: req.body.thigh_cm,
+    calf_cm: req.body.calf_cm,
+    progress_photo_url: storedFile.webFileUrl,
+    notes: req.body.notes || `Foto de evolucao enviada via web (${storedFile.webFileUrl})`,
+    recorded_at: normalizeRecordedAt(req.body.recorded_at),
+  });
+
+  return res.status(201).json({
+    ok: true,
+    measurement,
+    file: {
+      url: storedFile.webFileUrl,
+      localUrl: storedFile.localFileUrl,
+      webUrl: storedFile.webFileUrl,
+      mimeType: storedFile.mimeType,
+      size: storedFile.size,
+      originalSize: storedFile.originalSize,
+      optimized: storedFile.optimized,
+    },
+  });
 });
 
 const bodyMeasurementListController = asyncHandler(async (req, res) => {
@@ -496,6 +706,7 @@ const nutritionListController = asyncHandler(async (req, res) => {
 const nutritionTextAnalyzeController = asyncHandler(async (req, res) => {
   const userId = await resolveRequestUserId(req);
   const { text } = req.body;
+  const persist = parsePersistFlag(req.body?.persist, true);
 
   if (!text || typeof text !== "string") {
     return res.status(400).json({ ok: false, error: "text obrigatorio" });
@@ -506,14 +717,21 @@ const nutritionTextAnalyzeController = asyncHandler(async (req, res) => {
       appUser: { id: userId },
       messageText: text,
       source: "web",
+      persist,
     });
 
     return res.json({
       ok: true,
       analyzed: true,
+      persisted: persist,
       quality: result.analysis.quality,
       analysis: result.analysis,
       replyText: result.replyText,
+      modelUsed: result.modelUsed || null,
+      rawResponse: result.rawResponse || null,
+      rawInputText: result.rawInputText || text,
+      inputType: result.inputType || "text",
+      aiPayload: result.mergedAiPayload || result.analysis || null,
     });
   } catch (err) {
     const reason = normalizeOpenAiError(err);
@@ -531,6 +749,7 @@ const nutritionImageAnalyzeController = asyncHandler(async (req, res) => {
   const userId = await resolveRequestUserId(req);
   const file = req.file;
   const caption = String(req.body?.caption || "");
+  const persist = parsePersistFlag(req.body?.persist, true);
 
   if (!file) {
     return res.status(400).json({ ok: false, error: "Arquivo obrigatorio (campo file)" });
@@ -552,14 +771,21 @@ const nutritionImageAnalyzeController = asyncHandler(async (req, res) => {
         web_upload_filename: file.originalname || null,
         web_upload_mime: file.mimetype || null,
       },
+      persist,
     });
 
     return res.json({
       ok: true,
       analyzed: true,
+      persisted: persist,
       quality: result.analysis.quality,
       analysis: result.analysis,
       replyText: result.replyText,
+      modelUsed: result.modelUsed || null,
+      rawResponse: result.rawResponse || null,
+      rawInputText: result.rawInputText || caption || "[foto sem legenda]",
+      inputType: result.inputType || "photo",
+      aiPayload: result.mergedAiPayload || result.analysis || null,
     });
   } catch (err) {
     const reason = normalizeOpenAiError(err);
@@ -576,6 +802,7 @@ const nutritionImageAnalyzeController = asyncHandler(async (req, res) => {
 const nutritionAudioAnalyzeController = asyncHandler(async (req, res) => {
   const userId = await resolveRequestUserId(req);
   const file = req.file;
+  const persist = parsePersistFlag(req.body?.persist, true);
 
   if (!file) {
     return res.status(400).json({ ok: false, error: "Arquivo obrigatorio (campo file)" });
@@ -598,14 +825,21 @@ const nutritionAudioAnalyzeController = asyncHandler(async (req, res) => {
         web_upload_filename: file.originalname || null,
         web_upload_mime: file.mimetype || null,
       },
+      persist,
     });
 
     return res.json({
       ok: true,
       analyzed: true,
+      persisted: persist,
       quality: result.analysis.quality,
       analysis: result.analysis,
       replyText: result.replyText,
+      modelUsed: result.modelUsed || null,
+      rawResponse: result.rawResponse || null,
+      rawInputText: result.rawInputText || "[audio sem transcricao]",
+      inputType: result.inputType || "audio",
+      aiPayload: result.mergedAiPayload || result.analysis || null,
     });
   } catch (err) {
     const reason = normalizeOpenAiError(err);
@@ -617,6 +851,58 @@ const nutritionAudioAnalyzeController = asyncHandler(async (req, res) => {
       details: err.message,
     });
   }
+});
+
+const nutritionRegisterDraftController = asyncHandler(async (req, res) => {
+  const userId = await resolveRequestUserId(req);
+  const bodyAnalysis = req.body?.analysis;
+  const parsedAnalysis =
+    typeof bodyAnalysis === "string"
+      ? (() => {
+          try {
+            return JSON.parse(bodyAnalysis);
+          } catch {
+            return null;
+          }
+        })()
+      : bodyAnalysis;
+
+  if (!parsedAnalysis || typeof parsedAnalysis !== "object") {
+    return res.status(400).json({
+      ok: false,
+      error: "analysis obrigatorio para registrar rascunho",
+    });
+  }
+
+  const normalizedAnalysis = normalizeDraftAnalysis({
+    ...parsedAnalysis,
+    meal_slot: req.body?.meal_slot || parsedAnalysis.meal_slot,
+  });
+
+  const rawInputText = String(req.body?.raw_input_text || "").trim();
+  const rawResponse = String(req.body?.raw_response || "").trim();
+
+  const nutrition = await persistNutritionFromAnalysis({
+    userId,
+    analysis: normalizedAnalysis,
+    rawInputText: rawInputText || normalizedAnalysis.summary || "[rascunho sem texto base]",
+    inputType: normalizeInputType(req.body?.input_type || "manual"),
+    source: normalizeSource(req.body?.source || "web"),
+    modelUsed: String(req.body?.model_used || "").trim() || "web_draft_register",
+    rawResponse: rawResponse || formatNutritionReply(normalizedAnalysis),
+    extraAiPayload:
+      req.body?.extra_ai_payload && typeof req.body.extra_ai_payload === "object"
+        ? req.body.extra_ai_payload
+        : {},
+  });
+
+  return res.status(201).json({
+    ok: true,
+    persisted: true,
+    nutrition,
+    analysis: normalizedAnalysis,
+    replyText: formatNutritionReply(normalizedAnalysis),
+  });
 });
 
 const nutritionChatController = asyncHandler(async (req, res) => {
@@ -707,6 +993,7 @@ module.exports = {
   userGoalCreateController,
   userGoalListController,
   bodyMeasurementCreateController,
+  bodyMeasurementProgressPhotoUploadController,
   bodyMeasurementListController,
   bioimpedanceCreateController,
   bioimpedanceUploadController,
@@ -722,6 +1009,7 @@ module.exports = {
   nutritionTextAnalyzeController,
   nutritionImageAnalyzeController,
   nutritionAudioAnalyzeController,
+  nutritionRegisterDraftController,
   nutritionChatController,
   reportGenerateController,
   reportListController,

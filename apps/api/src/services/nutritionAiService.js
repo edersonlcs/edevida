@@ -206,8 +206,20 @@ async function analyzeTextNutrition(messageText, userContext) {
 }
 
 async function analyzeImageNutrition({ imageBuffer, mimeType, caption, userContext }) {
+  const normalizedMimeType = (() => {
+    const normalized = String(mimeType || "")
+      .toLowerCase()
+      .split(";")[0]
+      .trim();
+    if (normalized === "image/jpg") return "image/jpeg";
+    if (["image/jpeg", "image/png", "image/webp", "image/gif"].includes(normalized)) {
+      return normalized;
+    }
+    return "image/jpeg";
+  })();
+
   const base64 = imageBuffer.toString("base64");
-  const dataUrl = `data:${mimeType || "image/jpeg"};base64,${base64}`;
+  const dataUrl = `data:${normalizedMimeType};base64,${base64}`;
 
   const userText = buildUserPrompt(
     caption || "Analise esta imagem de refeicao e identifique alimentos/bebidas.",

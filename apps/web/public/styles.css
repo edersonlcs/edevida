@@ -177,6 +177,38 @@ body {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.profile-grid {
+  display: grid;
+  gap: 0.7rem;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.profile-card {
+  border: 1px solid rgba(19, 39, 43, 0.14);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.76);
+  padding: 0.7rem;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.profile-label {
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+.profile-value {
+  margin: 0;
+  font-size: 1.3rem;
+  font-family: "Space Grotesk", sans-serif;
+}
+
+.profile-note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
 .metric h2 {
   margin: 0;
   font-size: 0.92rem;
@@ -312,7 +344,7 @@ body {
 .charts-grid {
   display: grid;
   gap: 0.8rem;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 }
 
 .chart-card {
@@ -532,6 +564,32 @@ body {
   gap: 0.18rem;
 }
 
+.nutrition-entry-card {
+  border: 1px solid rgba(19, 39, 43, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.78);
+  padding: 0.6rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.nutrition-entry-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.nutrition-entry-text {
+  margin: 0;
+}
+
+.nutrition-food-meta {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
 .meal-simple-list {
   margin: 0;
   padding-left: 1.05rem;
@@ -542,6 +600,36 @@ body {
 .meal-simple-list li {
   color: var(--ink);
   font-size: 0.9rem;
+}
+
+.progress-photo-grid {
+  display: grid;
+  gap: 0.7rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.progress-photo-card {
+  border: 1px solid rgba(19, 39, 43, 0.14);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.78);
+  padding: 0.55rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.progress-photo-card img {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid rgba(19, 39, 43, 0.12);
+  background: rgba(19, 39, 43, 0.06);
+}
+
+.progress-photo-caption {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
 }
 
 .exam-kpi-grid {
@@ -666,6 +754,66 @@ textarea {
   padding: 0.7rem;
   white-space: pre-wrap;
   color: var(--ink-soft);
+}
+
+.output-rich {
+  white-space: normal;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.analysis-card {
+  border: 1px solid rgba(19, 39, 43, 0.15);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.82);
+  padding: 0.7rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.analysis-card h4 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-family: "Space Grotesk", sans-serif;
+}
+
+.analysis-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.6rem;
+  align-items: center;
+}
+
+.analysis-row p {
+  margin: 0;
+}
+
+.analysis-main-value {
+  margin: 0;
+  font-size: 1.3rem;
+  font-family: "Space Grotesk", sans-serif;
+  color: var(--ink);
+}
+
+.analysis-food-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.analysis-food-item {
+  border-left: 3px solid rgba(19, 39, 43, 0.2);
+  padding-left: 0.5rem;
+  display: grid;
+  gap: 0.16rem;
+}
+
+.analysis-food-item p {
+  margin: 0;
+}
+
+.analysis-action {
+  border-top: 1px dashed rgba(19, 39, 43, 0.2);
+  padding-top: 0.5rem;
 }
 
 .footer p {

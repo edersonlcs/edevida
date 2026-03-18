@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/web/styles.css?v=20260317h" />
+    <link rel="stylesheet" href="/web/styles.css?v=20260317j" />
   </head>
   <body>
     <div class="bg-layer"></div>
@@ -108,6 +108,12 @@
         </section>
 
         <article class="card">
+          <h3>Meu cadastro e status corporal</h3>
+          <div id="profile-summary-cards" class="profile-grid"></div>
+          <p id="profile-summary-meta" class="muted"></p>
+        </article>
+
+        <article class="card">
           <h3>Visão do corpo inteiro (IA)</h3>
           <div id="clinical-overall-banner" class="clinical-overall"></div>
           <div id="clinical-overview-cards" class="clinical-grid"></div>
@@ -139,7 +145,19 @@
               <canvas id="chart-hydration"></canvas>
             </div>
           </article>
+
+          <article class="card chart-card">
+            <h3>Medidas corporais (cm por registro)</h3>
+            <div class="chart-box">
+              <canvas id="chart-measurements"></canvas>
+            </div>
+          </article>
         </section>
+
+        <article class="card">
+          <h3>Evolução por foto</h3>
+          <div id="progress-photo-gallery" class="progress-photo-grid"></div>
+        </article>
 
         <article class="card">
           <h3>Exercícios do período</h3>
@@ -190,7 +208,7 @@
             <h3>Analisar alimentação (texto)</h3>
             <form id="nutrition-form" class="stack">
               <select name="mode">
-                <option value="register">Registrar refeição (com gravação)</option>
+                <option value="draft">Analisar para rascunho (sem gravar)</option>
                 <option value="chat">Somente conversar (sem registrar)</option>
               </select>
               <textarea
@@ -199,9 +217,9 @@
                 placeholder="Ex.: Almoço: arroz, feijão, frango grelhado e 400 ml de água"
                 required
               ></textarea>
-              <button class="btn-primary" type="submit">Enviar para IA</button>
+              <button class="btn-primary" type="submit">Analisar para rascunho</button>
             </form>
-            <pre id="nutrition-result" class="output"></pre>
+            <div id="nutrition-result" class="output output-rich"></div>
           </article>
 
           <article class="card">
@@ -209,18 +227,38 @@
             <form id="nutrition-image-form" class="stack">
               <input name="file" type="file" accept="image/*" required />
               <input name="caption" type="text" placeholder="Legenda opcional da refeição" />
-              <button class="btn-primary" type="submit">Enviar foto para IA</button>
+              <button class="btn-primary" type="submit">Analisar foto para rascunho</button>
             </form>
-            <pre id="nutrition-image-result" class="output"></pre>
+            <div id="nutrition-image-result" class="output output-rich"></div>
           </article>
 
           <article class="card">
             <h3>Analisar alimentação (voz)</h3>
             <form id="nutrition-audio-form" class="stack">
               <input name="file" type="file" accept="audio/*" required />
-              <button class="btn-primary" type="submit">Enviar áudio para IA</button>
+              <button class="btn-primary" type="submit">Analisar áudio para rascunho</button>
             </form>
-            <pre id="nutrition-audio-result" class="output"></pre>
+            <div id="nutrition-audio-result" class="output output-rich"></div>
+          </article>
+
+          <article class="card">
+            <h3>Rascunho de refeição (antes de registrar)</h3>
+            <p class="muted">Envie texto, foto e/ou áudio para completar o rascunho. Registre só quando estiver tudo certo.</p>
+            <div id="nutrition-draft-preview" class="output output-rich">Sem rascunho ativo.</div>
+            <form id="nutrition-draft-form" class="stack">
+              <select name="meal_slot">
+                <option value="">Refeição detectada automaticamente</option>
+                <option value="cafe_da_manha">Café da manhã</option>
+                <option value="lanche_da_manha">Lanche da manhã</option>
+                <option value="almoco">Almoço</option>
+                <option value="lanche_da_tarde">Lanche da tarde</option>
+                <option value="janta">Janta</option>
+                <option value="ceia">Ceia</option>
+                <option value="outro">Outro</option>
+              </select>
+              <button class="btn-primary" type="submit">Registrar refeição do rascunho</button>
+              <button id="nutrition-draft-clear" class="btn-ghost" type="button">Descartar rascunho</button>
+            </form>
           </article>
 
           <article class="card">
@@ -260,6 +298,19 @@
               <input name="thigh_cm" type="number" step="0.1" placeholder="Coxa (cm)" />
               <button class="btn-primary full" type="submit">Salvar medidas</button>
             </form>
+          </article>
+
+          <article class="card">
+            <h3>Foto de evolução corporal</h3>
+            <form id="measurement-photo-form" class="stack">
+              <input name="recorded_at" type="datetime-local" />
+              <input name="weight_kg" type="number" step="0.1" placeholder="Peso opcional (kg)" />
+              <input name="waist_cm" type="number" step="0.1" placeholder="Cintura opcional (cm)" />
+              <textarea name="notes" rows="2" placeholder="Observação opcional"></textarea>
+              <input name="file" type="file" accept="image/*" required />
+              <button class="btn-primary" type="submit">Salvar foto de evolução</button>
+            </form>
+            <pre id="measurement-photo-result" class="output"></pre>
           </article>
 
           <article class="card">
@@ -404,7 +455,8 @@
             <li>Para conversar sem registrar refeição, use <code>/chat sua pergunta</code>.</li>
             <li>Para registrar alimentação, envie texto, foto ou áudio da refeição.</li>
             <li>Para água, inclua no texto algo como: "bebi 500 ml de água".</li>
-            <li>Também pode usar os botões rápidos: <strong>Resumo de hoje</strong>, <strong>Status do corpo</strong> e <strong>Falar com IA</strong>.</li>
+            <li>No Telegram agora o fluxo é por rascunho: envie refeição/foto/áudio, ajuste se precisar, e confirme em <strong>Registrar refeicao</strong>.</li>
+            <li>Botões diários principais: <strong>Resumo de hoje</strong>, <strong>Status do corpo</strong>, <strong>Registrar refeicao</strong>, <strong>Sugestao proximo refeicao</strong>, <strong>Plano de hoje</strong>, <strong>Falar com IA</strong>, <strong>Painel</strong> e <strong>Help</strong>.</li>
             <li>Tudo que for registrado no Telegram aparece aqui no painel.</li>
           </ol>
         </article>
@@ -438,6 +490,6 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-    <script src="/web/app.js?v=20260317h" type="module"></script>
+    <script src="/web/app.js?v=20260317j" type="module"></script>
   </body>
 </html>

@@ -19,20 +19,37 @@ const {
   processPhotoMessage,
   processAudioMessage,
 } = require("../services/telegramMessageProcessor");
-const { saveAiInteraction } = require("../services/nutritionEntryService");
+const {
+  saveAiInteraction,
+  saveHydrationLog,
+  saveNutritionEntry,
+} = require("../services/nutritionEntryService");
 
 function buildTelegramMainKeyboard() {
   return {
     keyboard: [
       [{ text: "Resumo de hoje" }, { text: "Status do corpo" }],
-      [{ text: "Falar com IA" }, { text: "Bebi 300 ml de água" }],
-      [{ text: "/resumo" }, { text: "/corpo" }, { text: "/exames" }],
-      [{ text: "/painel" }, { text: "/help" }],
-      [{ text: "/chat Vou comer pizza hoje, como compenso?" }],
+      [{ text: "Registrar refeicao" }, { text: "Sugestao proximo refeicao" }],
+      [{ text: "Plano de hoje" }, { text: "Falar com IA" }],
+      [{ text: "Painel" }, { text: "Help" }],
     ],
     resize_keyboard: true,
     is_persistent: true,
     input_field_placeholder: "Envie refeição, foto, áudio ou use /chat",
+  };
+}
+
+function buildTelegramDraftKeyboard() {
+  return {
+    keyboard: [
+      [{ text: "Registrar refeicao" }, { text: "Cancelar rascunho" }],
+      [{ text: "Definir Cafe da manha" }, { text: "Definir Almoco" }, { text: "Definir Janta" }],
+      [{ text: "Definir Lanche da manha" }, { text: "Definir Lanche da tarde" }, { text: "Definir Ceia" }],
+      [{ text: "Definir Outro" }, { text: "Voltar menu" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+    input_field_placeholder: "Ajuste o rascunho e toque em Registrar refeicao",
   };
 }
 
@@ -63,6 +80,281 @@ async function safeReply(chatId, text, replyToMessageId, extra = {}) {
   }
 }
 
+const DRAFT_TTL_MS = 1000 * 60 * 60 * 6;
+const nutritionDraftStore = new Map();
+
+const QUALITY_RANK = {
+  otimo: 5,
+  bom: 4,
+  "ainda pode, mas pouco": 3,
+  ruim: 2,
+  "nunca coma": 1,
+};
+
+const DRAFT_SLOT_OPTIONS = [
+  { slot: "cafe_da_manha", label: "Cafe da manha", aliases: ["cafe da manha", "cafe", "cafe da manhã"] },
+  { slot: "lanche_da_manha", label: "Lanche da manha", aliases: ["lanche da manha", "lanche manha"] },
+  { slot: "almoco", label: "Almoco", aliases: ["almoco", "almoço"] },
+  { slot: "lanche_da_tarde", label: "Lanche da tarde", aliases: ["lanche da tarde", "lanche tarde"] },
+  { slot: "janta", label: "Janta", aliases: ["janta", "jantar"] },
+  { slot: "ceia", label: "Ceia", aliases: ["ceia"] },
+  { slot: "outro", label: "Outro", aliases: ["outro"] },
+];
+
+function getDraftKey(appUserId, chatId) {
+  return `${appUserId}:${chatId}`;
+}
+
+function getNutritionDraft(appUserId, chatId) {
+  const key = getDraftKey(appUserId, chatId);
+  const draft = nutritionDraftStore.get(key);
+  if (!draft) return null;
+
+  if (Date.now() - draft.updatedAt > DRAFT_TTL_MS) {
+    nutritionDraftStore.delete(key);
+    return null;
+  }
+
+  return draft;
+}
+
+function setNutritionDraft(appUserId, chatId, draft) {
+  const key = getDraftKey(appUserId, chatId);
+  nutritionDraftStore.set(key, {
+    ...draft,
+    updatedAt: Date.now(),
+  });
+}
+
+function clearNutritionDraft(appUserId, chatId) {
+  nutritionDraftStore.delete(getDraftKey(appUserId, chatId));
+}
+
+function rankQuality(value) {
+  const normalized = String(value || "").toLowerCase();
+  return QUALITY_RANK[normalized] || 0;
+}
+
+function pickMoreConservativeQuality(currentValue, nextValue) {
+  const currentRank = rankQuality(currentValue);
+  const nextRank = rankQuality(nextValue);
+  if (!currentRank) return nextValue || currentValue || "bom";
+  if (!nextRank) return currentValue;
+  return nextRank < currentRank ? nextValue : currentValue;
+}
+
+function normalizeFoodName(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function mergeFoodItems(currentItems, nextItems) {
+  const map = new Map();
+
+  for (const item of currentItems || []) {
+    const key = normalizeFoodName(item.food_name || item.name || "");
+    if (!key) continue;
+    map.set(key, { ...item });
+  }
+
+  for (const item of nextItems || []) {
+    const key = normalizeFoodName(item.food_name || item.name || "");
+    if (!key) continue;
+
+    const current = map.get(key);
+    if (!current) {
+      map.set(key, { ...item });
+      continue;
+    }
+
+    map.set(key, {
+      ...current,
+      ...item,
+      quality: pickMoreConservativeQuality(current.quality, item.quality),
+      portion: item.portion || current.portion,
+      reason: item.reason || current.reason,
+    });
+  }
+
+  return [...map.values()].slice(0, 14);
+}
+
+function pickMealSlotFromText(rawText) {
+  const normalized = normalizeIntentText(rawText);
+  if (!normalized) return null;
+  for (const item of DRAFT_SLOT_OPTIONS) {
+    if (item.aliases.some((alias) => normalized.includes(normalizeIntentText(alias)))) {
+      return item.slot;
+    }
+  }
+  return null;
+}
+
+function resolveDraftAction(rawText) {
+  const normalized = normalizeIntentText(rawText);
+  if (!normalized) return null;
+
+  if (["registrar refeicao", "registrar refeição", "registrar", "salvar refeicao", "salvar refeição"].includes(normalized)) {
+    return { type: "register" };
+  }
+
+  if (["cancelar rascunho", "cancelar", "descartar rascunho"].includes(normalized)) {
+    return { type: "cancel" };
+  }
+
+  if (["voltar menu", "voltar", "menu"].includes(normalized)) {
+    return { type: "menu" };
+  }
+
+  if (normalized.startsWith("definir ")) {
+    const slot = pickMealSlotFromText(normalized.replace(/^definir\s+/, ""));
+    if (slot) return { type: "set_slot", slot };
+  }
+
+  return null;
+}
+
+function sanitizeWaterIntakePerMessage(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  if (parsed > 1500) return 0;
+  return Math.round(parsed);
+}
+
+function hasExplicitWaterAmount(text) {
+  const value = String(text || "").toLowerCase();
+  if (!value) return false;
+
+  const hasWaterWord = value.includes("agua") || value.includes("água");
+  const hasAmount = /\b\d+(?:[.,]\d+)?\s?(ml|l|litro|litros)\b/.test(value);
+  return hasWaterWord && hasAmount;
+}
+
+function mergeDraftAnalysis(baseAnalysis, incomingAnalysis, incomingRawText = "") {
+  const explicitSlot = pickMealSlotFromText(incomingRawText);
+  const summaryParts = [baseAnalysis.summary, incomingAnalysis.summary]
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+  const uniqueSummary = [...new Set(summaryParts)];
+
+  const merged = {
+    ...baseAnalysis,
+    ...incomingAnalysis,
+    meal_slot: explicitSlot || incomingAnalysis.meal_slot || baseAnalysis.meal_slot || "outro",
+    summary: uniqueSummary.join(" | ").slice(0, 900),
+    quality: pickMoreConservativeQuality(baseAnalysis.quality, incomingAnalysis.quality),
+    impact: incomingAnalysis.impact || baseAnalysis.impact,
+    action_now: incomingAnalysis.action_now || baseAnalysis.action_now,
+    next_step: incomingAnalysis.next_step || baseAnalysis.next_step,
+    hydration_tip: incomingAnalysis.hydration_tip || baseAnalysis.hydration_tip,
+    water_intake_ml: Math.max(
+      Number(baseAnalysis.water_intake_ml || 0),
+      Number(incomingAnalysis.water_intake_ml || 0)
+    ),
+    water_recommended_ml: Math.max(
+      Number(baseAnalysis.water_recommended_ml || 0),
+      Number(incomingAnalysis.water_recommended_ml || 0)
+    ),
+    estimated_calories: Math.max(
+      Number(baseAnalysis.estimated_calories || 0),
+      Number(incomingAnalysis.estimated_calories || 0)
+    ),
+    protein_g: Math.max(Number(baseAnalysis.protein_g || 0), Number(incomingAnalysis.protein_g || 0)),
+    carbs_g: Math.max(Number(baseAnalysis.carbs_g || 0), Number(incomingAnalysis.carbs_g || 0)),
+    fat_g: Math.max(Number(baseAnalysis.fat_g || 0), Number(incomingAnalysis.fat_g || 0)),
+    food_items: mergeFoodItems(baseAnalysis.food_items || [], incomingAnalysis.food_items || []),
+  };
+
+  return merged;
+}
+
+function formatDraftPreview(draft) {
+  const analysis = draft.analysis || {};
+  const mealLabel = mealSlotLabel(analysis.meal_slot || "outro");
+  const foodItems = Array.isArray(analysis.food_items) ? analysis.food_items : [];
+  const topItems = foodItems.slice(0, 6);
+
+  const lines = [
+    "Rascunho da refeicao (ainda nao registrado)",
+    "",
+    `Refeicao: ${mealLabel}`,
+    `Qualidade: ${analysis.quality || "-"}`,
+    `Resumo: ${analysis.summary || "-"}`,
+    `Impacto: ${analysis.impact || "-"}`,
+    `Acao agora: ${analysis.action_now || "-"}`,
+    "",
+    "Itens identificados:",
+  ];
+
+  if (!topItems.length) {
+    lines.push("- Sem itens detalhados ainda.");
+  } else {
+    for (const item of topItems) {
+      lines.push(`- ${item.food_name || "Item"} | ${item.portion || "porcao nao informada"} | ${item.quality || "-"}`);
+      if (item.reason) lines.push(`  motivo: ${item.reason}`);
+    }
+  }
+
+  lines.push("", "Se precisar, envie mais texto/foto/audio para ajustar.");
+  lines.push("Quando estiver certo, toque em: Registrar refeicao.");
+
+  return lines.join("\n");
+}
+
+async function persistDraftNutritionEntry({ appUser, draft, source = "telegram" }) {
+  const analysis = draft.analysis || {};
+  const latestInput = draft.inputs?.[draft.inputs.length - 1] || {};
+  const rawInputText = latestInput.rawInputText || "[rascunho sem entrada]";
+  const aiPayload = {
+    ...analysis,
+    draft_inputs: draft.inputs || [],
+  };
+
+  await saveNutritionEntry({
+    user_id: appUser.id,
+    input_type: latestInput.inputType || "text",
+    source,
+    raw_input_text: rawInputText,
+    analyzed_summary: analysis.summary || null,
+    meal_quality: analysis.quality || null,
+    recommended_action: analysis.action_now || null,
+    estimated_calories: analysis.estimated_calories ?? null,
+    estimated_protein_g: analysis.protein_g ?? null,
+    estimated_carbs_g: analysis.carbs_g ?? null,
+    estimated_fat_g: analysis.fat_g ?? null,
+    water_ml_recommended: analysis.water_recommended_ml ?? null,
+    ai_payload: aiPayload,
+  });
+
+  const modelUsed = (draft.models || []).join(" -> ") || "unknown";
+  await saveAiInteraction({
+    user_id: appUser.id,
+    modality: latestInput.modality || "text",
+    model_used: modelUsed,
+    input_excerpt: String(rawInputText).slice(0, 3000),
+    response_text: draft.lastRawResponse || "",
+    response_json: aiPayload,
+  }).catch(() => {});
+
+  let safeWaterIntakeMl = sanitizeWaterIntakePerMessage(analysis.water_intake_ml);
+  if ((latestInput.inputType === "text" || latestInput.inputType === "audio") && !hasExplicitWaterAmount(rawInputText)) {
+    safeWaterIntakeMl = 0;
+  }
+
+  if (safeWaterIntakeMl > 0) {
+    await saveHydrationLog({
+      user_id: appUser.id,
+      amount_ml: safeWaterIntakeMl,
+      source,
+      notes: `Registro automatico extraido de rascunho ${latestInput.inputType || "text"}`,
+    }).catch(() => {});
+  }
+}
+
 function detectModality(message) {
   if (message?.text) return "text";
   if (Array.isArray(message?.photo) && message.photo.length > 0) return "vision";
@@ -87,6 +379,14 @@ function normalizeOpenAiError(err) {
       code: "OPENAI_RATE_LIMIT",
       userMessage:
         "A OpenAI esta com limite temporario de requisicoes. Tente novamente em alguns instantes.",
+    };
+  }
+
+  if (lowerMessage.includes("invalid mime type") || lowerMessage.includes("unsupported image")) {
+    return {
+      code: "OPENAI_INVALID_MEDIA",
+      userMessage:
+        "Nao consegui ler essa imagem no formato atual. Tente reenviar a foto em JPG/PNG ou envie texto complementar da refeicao.",
     };
   }
 
@@ -190,6 +490,10 @@ function detectShortcutIntent(rawText) {
   const normalized = normalizeIntentText(rawText);
   if (!normalized) return null;
 
+  if (["/start", "/help", "help", "ajuda"].includes(normalized)) {
+    return "help";
+  }
+
   if (["/resumo", "resumo", "resumo de hoje", "ver resumo"].includes(normalized)) {
     return "summary";
   }
@@ -202,7 +506,7 @@ function detectShortcutIntent(rawText) {
     return "exams";
   }
 
-  if (["/corpo", "status do corpo", "status corpo", "visao do corpo", "visao corpo"].includes(normalized)) {
+  if (["/corpo", "corpo", "status do corpo", "status corpo", "visao do corpo", "visao corpo"].includes(normalized)) {
     return "body_status";
   }
 
@@ -211,6 +515,22 @@ function detectShortcutIntent(rawText) {
   }
 
   return null;
+}
+
+function parseQuickChatButtonPrompt(rawText) {
+  const normalized = normalizeIntentText(rawText);
+  if (!normalized) return null;
+
+  const quickPrompts = {
+    "sugestao proxima refeicao":
+      "Me sugira a proxima refeicao de forma simples, com porcoes e foco no meu objetivo.",
+    "sugestao proximo refeicao":
+      "Me sugira a proxima refeicao de forma simples, com porcoes e foco no meu objetivo.",
+    "plano de hoje":
+      "Monte um plano curto para o restante de hoje com base no meu status corporal e exames.",
+  };
+
+  return quickPrompts[normalized] || null;
 }
 
 function normalizeMarkerName(value) {
@@ -574,11 +894,12 @@ function getTelegramHelpText() {
   return [
     "EdeVida ativo. Como usar:",
     "",
-    "1) Texto: descreva refeicao/bebida",
-    "Ex.: Almoco: arroz, feijao, frango e 400 ml de agua.",
+    "1) Envie texto, foto ou audio da refeicao",
+    "2) Receba o rascunho (ainda sem salvar)",
+    "3) Ajuste com mais texto/foto/audio se precisar",
+    "4) Toque em Registrar refeicao quando estiver certo",
     "",
-    "2) Foto: envie foto do prato",
-    "3) Audio: envie audio descrevendo o que comeu",
+    "Ex.: Almoco: arroz, feijao, frango e 400 ml de agua.",
     "",
     "Comandos:",
     "/start ou /help - mostra este guia",
@@ -588,7 +909,7 @@ function getTelegramHelpText() {
     "/exames - mostra acompanhamento dos exames",
     "/chat <pergunta> - conversa sem registrar refeicao",
     "",
-    "Atalhos de teclado: Resumo de hoje, Status do corpo e Falar com IA.",
+    "Botoes diarios: Resumo de hoje, Status do corpo, Registrar refeicao, Sugestao proximo refeicao, Plano de hoje, Falar com IA, Painel e Help.",
     "",
     "Dica: mensagens com '?' entram em modo conversa (sem registro).",
   ].join("\n");
@@ -644,8 +965,10 @@ const telegramWebhookController = asyncHandler(async (req, res) => {
     const rawText = String(message.text || "").trim();
     const normalizedText = rawText.toLowerCase();
     const shortcutIntent = detectShortcutIntent(rawText);
+    const quickChatButtonPrompt = parseQuickChatButtonPrompt(rawText);
+    const draftAction = resolveDraftAction(rawText);
 
-    if (normalizedText === "/start" || normalizedText === "/help") {
+    if (shortcutIntent === "help" || normalizedText === "/start" || normalizedText === "/help") {
       await safeReply(message.chat.id, getTelegramHelpText(), message.message_id);
       return res.json({ ok: true, handled: "help" });
     }
@@ -698,10 +1021,30 @@ const telegramWebhookController = asyncHandler(async (req, res) => {
     if (shortcutIntent === "chat_help") {
       await safeReply(
         message.chat.id,
-        "Modo conversa pronto. Envie /chat seguido da pergunta ou apenas mande uma pergunta com '?'.",
+        [
+          "Modo conversa pronto.",
+          "Use os botoes Sugestao proximo refeicao e Plano de hoje ou envie /chat com sua pergunta.",
+          "Exemplo: /chat Estou com fome agora, o que comer?",
+        ].join("\n"),
         message.message_id
       );
       return res.json({ ok: true, handled: "chat_help" });
+    }
+
+    if (quickChatButtonPrompt) {
+      try {
+        await runChatMode({
+          appUser,
+          text: quickChatButtonPrompt,
+          chatId: message.chat.id,
+          replyToMessageId: message.message_id,
+        });
+        return res.json({ ok: true, handled: "chat_quick_button" });
+      } catch (err) {
+        const aiError = normalizeOpenAiError(err);
+        await safeReply(message.chat.id, aiError.userMessage, message.message_id);
+        return res.json({ ok: true, handled: "chat_quick_button", analyzed: false, reason: aiError.code });
+      }
     }
 
     const chatCommandPrompt = parseChatCommand(rawText);
@@ -745,42 +1088,170 @@ const telegramWebhookController = asyncHandler(async (req, res) => {
         return res.json({ ok: true, handled: "chat", analyzed: false, reason: aiError.code });
       }
     }
+
+    const activeDraft = getNutritionDraft(appUser.id, message.chat.id);
+    if (draftAction?.type === "register") {
+      if (!activeDraft) {
+        await safeReply(
+          message.chat.id,
+          "Nao ha rascunho pendente. Envie texto, foto ou audio da refeicao para montar o rascunho.",
+          message.message_id
+        );
+        return res.json({ ok: true, handled: "draft_register_missing" });
+      }
+
+      try {
+        await persistDraftNutritionEntry({
+          appUser,
+          draft: activeDraft,
+          source: "telegram",
+        });
+        clearNutritionDraft(appUser.id, message.chat.id);
+        await safeReply(
+          message.chat.id,
+          "Refeicao registrada com sucesso. Quando quiser, envie nova foto/texto para o proximo registro.",
+          message.message_id
+        );
+        return res.json({ ok: true, handled: "draft_register" });
+      } catch (err) {
+        const aiError = normalizeOpenAiError(err);
+        await safeReply(message.chat.id, aiError.userMessage, message.message_id);
+        return res.json({ ok: true, handled: "draft_register", analyzed: false, reason: aiError.code });
+      }
+    }
+
+    if (draftAction?.type === "cancel") {
+      if (!activeDraft) {
+        await safeReply(message.chat.id, "Nao ha rascunho pendente para cancelar.", message.message_id);
+        return res.json({ ok: true, handled: "draft_cancel_missing" });
+      }
+
+      clearNutritionDraft(appUser.id, message.chat.id);
+      await safeReply(message.chat.id, "Rascunho cancelado.", message.message_id);
+      return res.json({ ok: true, handled: "draft_cancel" });
+    }
+
+    if (draftAction?.type === "menu") {
+      if (activeDraft) {
+        await safeReply(
+          message.chat.id,
+          "Menu principal aberto. Seu rascunho continua salvo. Para retomar, envie ajuste ou toque em Registrar refeicao.",
+          message.message_id
+        );
+      } else {
+        await safeReply(message.chat.id, "Menu principal aberto.", message.message_id);
+      }
+      return res.json({ ok: true, handled: "menu" });
+    }
+
+    if (draftAction?.type === "set_slot") {
+      if (!activeDraft) {
+        await safeReply(
+          message.chat.id,
+          "Nao ha rascunho pendente. Envie foto/texto da refeicao primeiro.",
+          message.message_id
+        );
+        return res.json({ ok: true, handled: "draft_set_slot_missing" });
+      }
+
+      const updatedDraft = {
+        ...activeDraft,
+        analysis: {
+          ...activeDraft.analysis,
+          meal_slot: draftAction.slot,
+        },
+      };
+      setNutritionDraft(appUser.id, message.chat.id, updatedDraft);
+
+      await safeReply(
+        message.chat.id,
+        formatDraftPreview(updatedDraft),
+        message.message_id,
+        { reply_markup: buildTelegramDraftKeyboard() }
+      );
+      return res.json({ ok: true, handled: "draft_set_slot" });
+    }
   }
 
   if (message.text || (Array.isArray(message.photo) && message.photo.length > 0) || message.voice || message.audio) {
     try {
-      let result = null;
+      const hasPhoto = Array.isArray(message.photo) && message.photo.length > 0;
+      const hasAudio = Boolean(message.voice || message.audio);
+      const currentDraft = getNutritionDraft(appUser.id, message.chat.id);
+
+      let analyzed = null;
+      let inputModality = "text";
 
       if (message.text) {
-        result = await processTextMessage({
+        analyzed = await processTextMessage({
           appUser,
           messageText: message.text,
           source: "telegram",
+          persist: false,
         });
-      } else if (Array.isArray(message.photo) && message.photo.length > 0) {
-        result = await processPhotoMessage({
+        inputModality = "text";
+      } else if (hasPhoto) {
+        analyzed = await processPhotoMessage({
           appUser,
           message,
           source: "telegram",
+          persist: false,
         });
-      } else {
-        result = await processAudioMessage({
+        inputModality = "vision";
+      } else if (hasAudio) {
+        analyzed = await processAudioMessage({
           appUser,
           message,
           source: "telegram",
+          persist: false,
         });
+        inputModality = "audio";
       }
 
-      const replyPrefix =
-        message.voice || message.audio
-          ? "Transcrevi seu audio e fiz a analise.\n\n"
-          : Array.isArray(message.photo) && message.photo.length > 0
-            ? "Analisei sua foto.\n\n"
-            : "";
+      const rawInputText = analyzed.rawInputText || message.text || message.caption || "[media]";
+      const draftInput = {
+        inputType: analyzed.inputType || (hasPhoto ? "photo" : hasAudio ? "audio" : "text"),
+        modality: inputModality,
+        rawInputText,
+        at: new Date().toISOString(),
+      };
 
-      await safeReply(message.chat.id, `${replyPrefix}${result.replyText}`, message.message_id);
+      let nextDraft = null;
+      if (currentDraft) {
+        nextDraft = {
+          ...currentDraft,
+          analysis: mergeDraftAnalysis(currentDraft.analysis || {}, analyzed.analysis || {}, rawInputText),
+          models: [...(currentDraft.models || []), analyzed.modelUsed].filter(Boolean).slice(-6),
+          lastRawResponse: analyzed.rawResponse || currentDraft.lastRawResponse || "",
+          inputs: [...(currentDraft.inputs || []), draftInput].slice(-20),
+        };
+      } else {
+        const explicitSlot = pickMealSlotFromText(rawInputText);
+        nextDraft = {
+          analysis: {
+            ...(analyzed.analysis || {}),
+            meal_slot: explicitSlot || analyzed.analysis?.meal_slot || "outro",
+          },
+          models: [analyzed.modelUsed].filter(Boolean),
+          lastRawResponse: analyzed.rawResponse || "",
+          inputs: [draftInput],
+        };
+      }
 
-      return res.json({ ok: true, analyzed: true, quality: result.analysis.quality });
+      setNutritionDraft(appUser.id, message.chat.id, nextDraft);
+
+      const replyPrefix = currentDraft
+        ? "Rascunho atualizado com sua nova informacao."
+        : "Analise concluida. Revise o rascunho antes de registrar.";
+
+      await safeReply(
+        message.chat.id,
+        `${replyPrefix}\n\n${formatDraftPreview(nextDraft)}`,
+        message.message_id,
+        { reply_markup: buildTelegramDraftKeyboard() }
+      );
+
+      return res.json({ ok: true, analyzed: true, draft: true, quality: nextDraft.analysis?.quality || null });
     } catch (err) {
       const aiError = normalizeOpenAiError(err);
 
@@ -808,7 +1279,7 @@ const telegramWebhookController = asyncHandler(async (req, res) => {
 
   await safeReply(
     message.chat.id,
-    "Formato recebido. Envie texto/foto/audio para registrar, /chat para conversar e /resumo para visão do dia.",
+    "Formato recebido. Envie texto/foto/audio para criar rascunho de refeicao, ajuste se precisar e toque em Registrar refeicao.",
     message.message_id
   );
 

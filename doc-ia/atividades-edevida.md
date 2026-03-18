@@ -227,6 +227,10 @@ Melhorias aplicadas apos uso real no web/telegram:
 - upload de exame com modelo mais forte e prompt especialista (enfoque nefro + cardio), com exame tendo prioridade clinica sobre bioimpedancia;
 - aba de exames com impacto pratico por marcador alterado;
 - web com registro alimentar por `foto` e `audio` (alem de texto), com analise e gravacao;
+- web com fluxo de rascunho antes de gravar refeicao:
+  - analise por texto/foto/audio sem persistir automaticamente,
+  - revisao visual em cards (resumo, classificacao, macros, itens e motivo),
+  - confirmacao manual em `Registrar refeicao do rascunho` com opcao de ajustar o tipo de refeicao;
 - chat da IA mais conversacional e contextualizado com historico clinico (menos resposta engessada);
 - protecao para nao registrar hidratacao automatica fora de faixa por mensagem (anti-hallucination).
 

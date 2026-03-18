@@ -4,6 +4,7 @@ const state = {
     weight: null,
     fat: null,
     hydration: null,
+    measurements: null,
   },
   filter: {
     from: "",
@@ -11,6 +12,7 @@ const state = {
   },
   cache: {
     dashboard: null,
+    profile: null,
     reports: [],
     measurements: [],
     bioimpedance: [],
@@ -20,6 +22,7 @@ const state = {
     nutrition: [],
     telegramWebhook: null,
   },
+  nutritionDraft: null,
 };
 
 const STATUS_CLASSES = ["status-info", "status-success", "status-warning", "status-error"];
@@ -145,6 +148,12 @@ function writeOutput(id, value) {
   const node = document.getElementById(id);
   if (!node) return;
   node.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+}
+
+function writeOutputHtml(id, html) {
+  const node = document.getElementById(id);
+  if (!node) return;
+  node.innerHTML = html;
 }
 
 function emptyState(message) {
@@ -469,6 +478,117 @@ function renderMetricCards() {
   document.getElementById("metric-bio-visceral").textContent = latestBio ? fmtNumber(latestBio.visceral_fat_level) : "-";
 }
 
+function profileCardHtml(label, value, note = "") {
+  return `
+    <article class="profile-card">
+      <span class="profile-label">${escapeHtml(label)}</span>
+      <p class="profile-value">${escapeHtml(value)}</p>
+      <p class="profile-note">${escapeHtml(note || "-")}</p>
+    </article>
+  `;
+}
+
+function renderProfileSummary() {
+  const cardsNode = document.getElementById("profile-summary-cards");
+  const metaNode = document.getElementById("profile-summary-meta");
+  if (!cardsNode || !metaNode) return;
+
+  const overview = state.cache.dashboard?.overview || {};
+  const profile = state.cache.profile || overview.profile || null;
+  const latestMeasurement = state.cache.measurements[0] || overview.latest_measurement || null;
+  const latestBio = state.cache.bioimpedance[0] || overview.latest_bioimpedance || null;
+
+  if (!profile && !latestMeasurement && !latestBio) {
+    cardsNode.innerHTML = emptyState("Preencha perfil e medidas para montar seu resumo corporal.");
+    metaNode.textContent = "Sem dados de cadastro ainda.";
+    return;
+  }
+
+  const heightCm = toNumberOrNull(profile?.height_cm);
+  const baselineWeight = toNumberOrNull(profile?.baseline_weight_kg);
+  const currentWeight = toNumberOrNull(latestMeasurement?.weight_kg);
+  const currentBmi = toNumberOrNull(latestMeasurement?.bmi);
+  const currentBodyFat = toNumberOrNull(latestBio?.body_fat_pct ?? latestMeasurement?.body_fat_pct);
+  const currentWaist = toNumberOrNull(latestMeasurement?.waist_cm);
+  const weightDelta =
+    baselineWeight !== null && currentWeight !== null ? Number((currentWeight - baselineWeight).toFixed(1)) : null;
+
+  const cards = [
+    {
+      label: "Altura",
+      value: heightCm !== null ? `${fmtNumber(heightCm)} cm` : "-",
+      note: "perfil base",
+    },
+    {
+      label: "Peso base",
+      value: baselineWeight !== null ? `${fmtNumber(baselineWeight)} kg` : "-",
+      note: "cadastro",
+    },
+    {
+      label: "Peso atual",
+      value: currentWeight !== null ? `${fmtNumber(currentWeight)} kg` : "-",
+      note:
+        weightDelta === null
+          ? "sem comparacao"
+          : weightDelta > 0
+            ? `+${fmtNumber(weightDelta)} kg vs base`
+            : `${fmtNumber(weightDelta)} kg vs base`,
+    },
+    {
+      label: "IMC atual",
+      value: currentBmi !== null ? fmtNumber(currentBmi, 2) : "-",
+      note: "ultima medicao",
+    },
+    {
+      label: "Gordura corporal",
+      value: currentBodyFat !== null ? `${fmtNumber(currentBodyFat)}%` : "-",
+      note: "bioimpedancia mais recente",
+    },
+    {
+      label: "Cintura",
+      value: currentWaist !== null ? `${fmtNumber(currentWaist)} cm` : "-",
+      note: "ultima medida corporal",
+    },
+  ];
+
+  cardsNode.innerHTML = cards.map((item) => profileCardHtml(item.label, item.value, item.note)).join("");
+
+  const sourceDate = latestMeasurement?.recorded_at || latestBio?.recorded_at || null;
+  metaNode.textContent = sourceDate
+    ? `Dados atuais baseados no registro de ${fmtDateTime(sourceDate)}.`
+    : "Dados atuais baseados no seu perfil cadastrado.";
+}
+
+function renderProgressPhotos() {
+  const container = document.getElementById("progress-photo-gallery");
+  if (!container) return;
+
+  const photos = (state.cache.measurements || [])
+    .filter((item) => item.progress_photo_url)
+    .slice(0, 12);
+
+  if (!photos.length) {
+    container.innerHTML = emptyState("Sem fotos de evolução no período. Envie uma foto no bloco de registros.");
+    return;
+  }
+
+  container.innerHTML = photos.map((item) => {
+    const weight = toNumberOrNull(item.weight_kg);
+    const waist = toNumberOrNull(item.waist_cm);
+    const captionParts = [];
+    if (weight !== null) captionParts.push(`${fmtNumber(weight)} kg`);
+    if (waist !== null) captionParts.push(`cintura ${fmtNumber(waist)} cm`);
+
+    return `
+      <article class="progress-photo-card">
+        <img src="${escapeHtml(item.progress_photo_url)}" alt="Foto de evolução em ${escapeHtml(fmtDate(item.recorded_at))}" loading="lazy" />
+        <p class="progress-photo-caption"><strong>${escapeHtml(fmtDate(item.recorded_at))}</strong></p>
+        <p class="progress-photo-caption">${escapeHtml(captionParts.join(" | ") || "Sem medidas associadas")}</p>
+      </article>
+    `;
+  }).join("");
+}
+
 function renderHistoryList(containerId, items, toHtml) {
   const container = document.getElementById(containerId);
   if (!container) return;
@@ -492,6 +612,25 @@ function extractFoodItems(entry) {
         reason: item.reason || "sem observação",
       }))
       .slice(0, 8);
+  }
+
+  const rawText = String(entry?.raw_input_text || "")
+    .replace(/^.+?:\s*/i, "")
+    .trim();
+  if (rawText) {
+    const inferredItems = rawText
+      .split(/[,\n;]+/g)
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .slice(0, 8)
+      .map((item) => ({
+        food_name: item,
+        portion: "não estimada",
+        quality: entry.meal_quality || "bom",
+        reason: "Item inferido do texto informado (sem análise granular da IA).",
+      }));
+
+    if (inferredItems.length) return inferredItems;
   }
 
   if (entry.analyzed_summary) {
@@ -611,33 +750,231 @@ function signalClassByRatio(ratio, goodThreshold = 1, attentionThreshold = 0.7) 
   return "signal-alert";
 }
 
-function formatNutritionResult(analysisPayload) {
-  const analysis = analysisPayload?.analysis || {};
-  const foodItems = Array.isArray(analysis.food_items) ? analysis.food_items : [];
+const NUTRITION_QUALITY_ORDER = ["nunca coma", "ruim", "ainda pode, mas pouco", "bom", "otimo"];
 
-  const lines = [
-    `Classificação geral: ${analysisPayload?.quality || analysis.quality || "-"}`,
-    `Refeição: ${analysis.meal_slot || "outro"}`,
-    `Resumo geral: ${analysis.summary || analysisPayload?.replyText || "-"}`,
-    `Água detectada: ${fmtNumber(analysis.water_intake_ml, 0)} ml | Meta sugerida: ${fmtNumber(analysis.water_recommended_ml, 0)} ml`,
-    `Macros estimadas: ${fmtNumber(analysis.estimated_calories, 0)} kcal | P ${fmtNumber(analysis.protein_g)}g | C ${fmtNumber(analysis.carbs_g)}g | G ${fmtNumber(analysis.fat_g)}g`,
-    "",
-    "Itens analisados:",
-  ];
+function normalizeNutritionQuality(value) {
+  const normalized = String(value || "").toLowerCase().trim();
+  return NUTRITION_QUALITY_ORDER.includes(normalized) ? normalized : "bom";
+}
 
-  if (!foodItems.length) {
-    lines.push("- Sem detalhamento item a item nesta resposta.");
-  } else {
-    for (const item of foodItems) {
-      lines.push(`- ${item.food_name}: ${item.quality} | porção ${item.portion}`);
-      lines.push(`  motivo: ${item.reason}`);
-    }
+function pickWorseQuality(left, right) {
+  const leftQuality = normalizeNutritionQuality(left);
+  const rightQuality = normalizeNutritionQuality(right);
+  return NUTRITION_QUALITY_ORDER.indexOf(leftQuality) <= NUTRITION_QUALITY_ORDER.indexOf(rightQuality)
+    ? leftQuality
+    : rightQuality;
+}
+
+function mergeTextUnique(a, b, separator = " | ") {
+  const left = String(a || "").trim();
+  const right = String(b || "").trim();
+  if (!left) return right;
+  if (!right) return left;
+  if (left.toLowerCase() === right.toLowerCase()) return left;
+  return `${left}${separator}${right}`;
+}
+
+function sumNullableNumbers(a, b, digits = 1) {
+  const left = toNumberOrNull(a);
+  const right = toNumberOrNull(b);
+  if (left === null && right === null) return null;
+  if (left === null) return right;
+  if (right === null) return left;
+  return Number((left + right).toFixed(digits));
+}
+
+function maxNullableNumbers(a, b) {
+  const left = toNumberOrNull(a);
+  const right = toNumberOrNull(b);
+  if (left === null && right === null) return null;
+  if (left === null) return right;
+  if (right === null) return left;
+  return Math.max(left, right);
+}
+
+function normalizeFoodItems(items) {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((item) => ({
+      food_name: String(item?.food_name || "Item").trim(),
+      portion: String(item?.portion || "porção não informada").trim(),
+      quality: normalizeNutritionQuality(item?.quality || "bom"),
+      reason: String(item?.reason || "sem observação").trim(),
+    }))
+    .filter((item) => item.food_name)
+    .slice(0, 20);
+}
+
+function mergeFoodItems(baseItems, nextItems) {
+  const merged = [...normalizeFoodItems(baseItems)];
+  const seen = new Set(
+    merged.map((item) => `${item.food_name.toLowerCase()}::${item.portion.toLowerCase()}`)
+  );
+
+  for (const item of normalizeFoodItems(nextItems)) {
+    const key = `${item.food_name.toLowerCase()}::${item.portion.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(item);
   }
 
-  lines.push("", `Ação agora: ${analysis.action_now || "-"}`);
-  lines.push(`Próximo passo: ${analysis.next_step || "-"}`);
+  return merged.slice(0, 30);
+}
 
-  return lines.join("\n");
+function normalizeAnalysisPayload(payload) {
+  const analysis = payload?.analysis && typeof payload.analysis === "object" ? payload.analysis : payload || {};
+  const mealSlot = MEAL_SLOTS.some((item) => item.key === analysis.meal_slot) ? analysis.meal_slot : "outro";
+
+  return {
+    meal_slot: mealSlot,
+    summary: String(analysis.summary || "").trim(),
+    quality: normalizeNutritionQuality(payload?.quality || analysis.quality || "bom"),
+    impact: String(analysis.impact || "").trim(),
+    action_now: String(analysis.action_now || "").trim(),
+    next_step: String(analysis.next_step || "").trim(),
+    hydration_tip: String(analysis.hydration_tip || "").trim(),
+    water_intake_ml: toNumberOrNull(analysis.water_intake_ml),
+    water_recommended_ml: toNumberOrNull(analysis.water_recommended_ml),
+    estimated_calories: toNumberOrNull(analysis.estimated_calories),
+    protein_g: toNumberOrNull(analysis.protein_g),
+    carbs_g: toNumberOrNull(analysis.carbs_g),
+    fat_g: toNumberOrNull(analysis.fat_g),
+    food_items: normalizeFoodItems(analysis.food_items),
+  };
+}
+
+function mergeNutritionAnalysis(base, next) {
+  const left = normalizeAnalysisPayload(base);
+  const right = normalizeAnalysisPayload(next);
+  const nextMealSlot = right.meal_slot !== "outro" ? right.meal_slot : left.meal_slot;
+
+  return {
+    meal_slot: nextMealSlot || "outro",
+    summary: mergeTextUnique(left.summary, right.summary),
+    quality: pickWorseQuality(left.quality, right.quality),
+    impact: mergeTextUnique(left.impact, right.impact),
+    action_now: mergeTextUnique(left.action_now, right.action_now),
+    next_step: mergeTextUnique(left.next_step, right.next_step),
+    hydration_tip: mergeTextUnique(left.hydration_tip, right.hydration_tip),
+    water_intake_ml: sumNullableNumbers(left.water_intake_ml, right.water_intake_ml, 0),
+    water_recommended_ml: maxNullableNumbers(left.water_recommended_ml, right.water_recommended_ml),
+    estimated_calories: sumNullableNumbers(left.estimated_calories, right.estimated_calories, 0),
+    protein_g: sumNullableNumbers(left.protein_g, right.protein_g, 1),
+    carbs_g: sumNullableNumbers(left.carbs_g, right.carbs_g, 1),
+    fat_g: sumNullableNumbers(left.fat_g, right.fat_g, 1),
+    food_items: mergeFoodItems(left.food_items, right.food_items),
+  };
+}
+
+function buildNutritionAnalysisHtml(payload, { title = "Análise nutricional", subtitle = "" } = {}) {
+  const normalized = normalizeAnalysisPayload(payload);
+  const foodItems = normalized.food_items;
+
+  const headerSubtitle = subtitle ? `<p class="muted">${escapeHtml(subtitle)}</p>` : "";
+  const mealLabel = mealSlotLabel(normalized.meal_slot);
+
+  const itemsHtml = foodItems.length
+    ? `
+      <div class="analysis-food-list">
+        ${foodItems
+          .map(
+            (item) => `
+          <article class="analysis-food-item">
+            <p><strong>${escapeHtml(item.food_name)}</strong> <span class="tag ${qualityClass(item.quality)}">${escapeHtml(item.quality)}</span></p>
+            <p class="muted">Porção: ${escapeHtml(item.portion)}</p>
+            <p class="muted">${escapeHtml(item.reason)}</p>
+          </article>
+        `
+          )
+          .join("")}
+      </div>
+    `
+    : `<p class="muted">Sem itens detalhados nesta análise.</p>`;
+
+  return `
+    <article class="analysis-card">
+      <h4>${escapeHtml(title)}</h4>
+      ${headerSubtitle}
+      <div class="analysis-row">
+        <span class="tag ${qualityClass(normalized.quality)}">${escapeHtml(normalized.quality)}</span>
+        <span class="tag quality-default">${escapeHtml(mealLabel)}</span>
+      </div>
+      <p><strong>Resumo geral:</strong> ${escapeHtml(normalized.summary || "sem resumo")}</p>
+      <div class="analysis-row">
+        <p><strong>Água detectada:</strong> ${fmtNumber(normalized.water_intake_ml, 0)} ml</p>
+        <p><strong>Meta sugerida:</strong> ${fmtNumber(normalized.water_recommended_ml, 0)} ml</p>
+      </div>
+      <p><strong>Macros estimadas:</strong> ${fmtNumber(normalized.estimated_calories, 0)} kcal | P ${fmtNumber(normalized.protein_g)}g | C ${fmtNumber(normalized.carbs_g)}g | G ${fmtNumber(normalized.fat_g)}g</p>
+      <div>
+        <p><strong>Itens analisados:</strong></p>
+        ${itemsHtml}
+      </div>
+      <div class="analysis-action">
+        <p><strong>Ação de ajuste agora:</strong> ${escapeHtml(normalized.action_now || "-")}</p>
+        <p><strong>Próximo passo:</strong> ${escapeHtml(normalized.next_step || "-")}</p>
+      </div>
+    </article>
+  `;
+}
+
+function setNutritionDraftFromAnalysis(resultPayload, sourceLabel = "texto") {
+  const normalized = normalizeAnalysisPayload(resultPayload);
+  const rawInput = String(resultPayload?.rawInputText || "").trim();
+  const draftPiece = {
+    analysis: normalized,
+    inputType: resultPayload?.inputType || "manual",
+    modelUsed: resultPayload?.modelUsed || null,
+    rawResponse: resultPayload?.rawResponse || null,
+    rawInputs: rawInput ? [rawInput] : [],
+    sources: [sourceLabel],
+  };
+
+  if (!state.nutritionDraft) {
+    state.nutritionDraft = draftPiece;
+    return;
+  }
+
+  state.nutritionDraft = {
+    analysis: mergeNutritionAnalysis(state.nutritionDraft.analysis, draftPiece.analysis),
+    inputType: draftPiece.inputType || state.nutritionDraft.inputType || "manual",
+    modelUsed: draftPiece.modelUsed || state.nutritionDraft.modelUsed || null,
+    rawResponse: draftPiece.rawResponse || state.nutritionDraft.rawResponse || null,
+    rawInputs: [...(state.nutritionDraft.rawInputs || []), ...draftPiece.rawInputs].slice(-20),
+    sources: [...(state.nutritionDraft.sources || []), ...draftPiece.sources].slice(-20),
+  };
+}
+
+function clearNutritionDraft() {
+  state.nutritionDraft = null;
+}
+
+function renderNutritionDraftPreview() {
+  const node = document.getElementById("nutrition-draft-preview");
+  const slotSelect = document.querySelector("#nutrition-draft-form select[name='meal_slot']");
+  if (!node) return;
+
+  if (!state.nutritionDraft) {
+    node.textContent = "Sem rascunho ativo.";
+    if (slotSelect) slotSelect.value = "";
+    return;
+  }
+
+  const draft = state.nutritionDraft;
+  const sourcesSummary = (draft.sources || []).join(" + ");
+  writeOutputHtml(
+    "nutrition-draft-preview",
+    buildNutritionAnalysisHtml(
+      { analysis: draft.analysis },
+      {
+        title: "Rascunho pronto para revisão",
+        subtitle: `Classificação e macros representam o total atual do rascunho (${sourcesSummary || "entrada única"}).`,
+      }
+    )
+  );
+
+  if (slotSelect && !slotSelect.value && draft.analysis?.meal_slot && draft.analysis.meal_slot !== "outro") {
+    slotSelect.value = draft.analysis.meal_slot;
+  }
 }
 
 function renderDailyComparison() {
@@ -807,7 +1144,10 @@ function renderNutritionDashboard() {
   });
 
   if (!mealEntries.length) {
-    detailsContainer.innerHTML = emptyState("Sem registros alimentares no período filtrado.");
+    const message = nutritionEntries.length
+      ? "Há registros no período, mas nenhum foi identificado como refeição detalhável. Envie alimento por texto, foto ou áudio."
+      : "Sem registros alimentares no período filtrado.";
+    detailsContainer.innerHTML = emptyState(message);
     return;
   }
 
@@ -820,11 +1160,44 @@ function renderNutritionDashboard() {
 
   detailsContainer.innerHTML = MEAL_SLOTS_CORE.map((slot) => {
     const entries = groupedBySlot[slot.key] || [];
-    const lines = entries.slice(0, 6).map((entry) => `
-      <li>
-        <strong>${fmtDateTime(entry.recorded_at)}</strong> - ${escapeHtml(mealTextPreview(entry))}
-      </li>
-    `).join("");
+    const detailedEntries = entries.slice(0, 6).map((entry) => {
+      const quality = entry.meal_quality || "sem registro";
+      const foodItems = extractFoodItems(entry);
+      const summary = entry.analyzed_summary || mealTextPreview(entry);
+
+      const foodDetails = foodItems.length
+        ? `
+          <div class="nutrition-food-list">
+            ${foodItems.map((food) => `
+              <article class="nutrition-food-item">
+                <p>
+                  <strong>${escapeHtml(food.food_name)}</strong>
+                  <span class="tag ${qualityClass(food.quality)}">${escapeHtml(food.quality)}</span>
+                </p>
+                <p class="nutrition-food-meta">Porção: ${escapeHtml(food.portion || "não informada")}</p>
+                <p class="nutrition-food-meta">${escapeHtml(food.reason || "sem observação")}</p>
+              </article>
+            `).join("")}
+          </div>
+        `
+        : `<p class="muted">Sem itens detalhados nesta refeição.</p>`;
+
+      return `
+        <article class="nutrition-entry-card">
+          <header class="nutrition-entry-header">
+            <strong>${fmtDateTime(entry.recorded_at)}</strong>
+            <span class="tag ${qualityClass(quality)}">${escapeHtml(quality)}</span>
+          </header>
+          <p class="nutrition-entry-text">${escapeHtml(summary)}</p>
+          ${foodDetails}
+          ${
+            entry.recommended_action
+              ? `<p class="nutrition-food-meta"><strong>Ação:</strong> ${escapeHtml(entry.recommended_action)}</p>`
+              : ""
+          }
+        </article>
+      `;
+    }).join("");
 
     return `
       <article class="history-item">
@@ -832,7 +1205,7 @@ function renderNutritionDashboard() {
           <strong>${slot.label}</strong>
           <span class="tag quality-default">${entries.length} registro(s)</span>
         </header>
-        ${entries.length ? `<ul class="meal-simple-list">${lines}</ul>` : `<p class="muted">Sem registro neste período.</p>`}
+        ${entries.length ? detailedEntries : `<p class="muted">Sem registro neste período.</p>`}
       </article>
     `;
   }).join("");
@@ -844,6 +1217,11 @@ function renderHistories() {
       <header><strong>${fmtDateTime(item.recorded_at)}</strong></header>
       <p>Peso: <strong>${fmtNumber(item.weight_kg)} kg</strong> | IMC: ${fmtNumber(item.bmi, 2)}</p>
       <p>Gordura: ${fmtNumber(item.body_fat_pct)}% | Cintura: ${fmtNumber(item.waist_cm)} cm</p>
+      ${
+        item.progress_photo_url
+          ? `<p><a class="file-link" href="${escapeHtml(item.progress_photo_url)}" target="_blank" rel="noreferrer">Abrir foto de evolução</a></p>`
+          : ""
+      }
       <p class="muted">${escapeHtml(item.notes || "-")}</p>
     </article>
   `);
@@ -1215,10 +1593,81 @@ function renderHydrationChart() {
   });
 }
 
+function renderBodyMeasurementsChart() {
+  const points = sortAscByDate(state.cache.measurements, "recorded_at")
+    .filter((item) => {
+      const waist = toNumberOrNull(item.waist_cm);
+      const abdomen = toNumberOrNull(item.abdomen_cm);
+      const hip = toNumberOrNull(item.hip_cm);
+      const thigh = toNumberOrNull(item.thigh_cm);
+      return waist !== null || abdomen !== null || hip !== null || thigh !== null;
+    })
+    .slice(-40);
+
+  upsertChart("measurements", "chart-measurements", {
+    type: "line",
+    data: {
+      labels: points.map((item) => fmtDate(item.recorded_at)),
+      datasets: [
+        {
+          label: "Cintura (cm)",
+          data: points.map((item) => toNumberOrNull(item.waist_cm)),
+          borderColor: "#2f8f83",
+          backgroundColor: "rgba(47,143,131,0.18)",
+          tension: 0.24,
+          pointRadius: 3,
+          spanGaps: true,
+        },
+        {
+          label: "Abdômen (cm)",
+          data: points.map((item) => toNumberOrNull(item.abdomen_cm)),
+          borderColor: "#267cb7",
+          backgroundColor: "rgba(38,124,183,0.18)",
+          tension: 0.24,
+          pointRadius: 3,
+          spanGaps: true,
+        },
+        {
+          label: "Quadril (cm)",
+          data: points.map((item) => toNumberOrNull(item.hip_cm)),
+          borderColor: "#d35f2f",
+          backgroundColor: "rgba(211,95,47,0.18)",
+          tension: 0.24,
+          pointRadius: 3,
+          spanGaps: true,
+        },
+        {
+          label: "Coxa (cm)",
+          data: points.map((item) => toNumberOrNull(item.thigh_cm)),
+          borderColor: "#5e7f32",
+          backgroundColor: "rgba(94,127,50,0.16)",
+          tension: 0.24,
+          pointRadius: 3,
+          spanGaps: true,
+        },
+      ],
+    },
+    options: {
+      ...baseChartOptions(),
+      plugins: {
+        legend: {
+          display: true,
+          position: "bottom",
+          labels: {
+            boxWidth: 12,
+            usePointStyle: true,
+          },
+        },
+      },
+    },
+  });
+}
+
 function renderCharts() {
   renderWeightChart();
   renderFatChart();
   renderHydrationChart();
+  renderBodyMeasurementsChart();
 }
 
 async function loadTelegramWebhookInfo() {
@@ -1262,8 +1711,9 @@ async function loadAllData() {
     ...filterParams,
   };
 
-  const [dashboard, reports, measurements, bioimpedance, exams, hydration, workouts, nutrition] = await Promise.all([
+  const [dashboard, profile, reports, measurements, bioimpedance, exams, hydration, workouts, nutrition] = await Promise.all([
     apiJson(`/api/dashboard/overview?${queryStringFromObject({ user_id: userId })}`),
+    apiJson(`/api/profile?${queryStringFromObject({ user_id: userId })}`),
     apiJson(`/api/reports?${queryStringFromObject({ user_id: userId, period: "daily", limit: 14 })}`),
     apiJson(`/api/measurements?${queryStringFromObject({ ...common, limit: 200 })}`),
     apiJson(`/api/bioimpedance?${queryStringFromObject({ ...common, limit: 200 })}`),
@@ -1274,6 +1724,7 @@ async function loadAllData() {
   ]);
 
   state.cache.dashboard = dashboard;
+  state.cache.profile = profile.profile || dashboard?.overview?.profile || null;
   state.cache.reports = reports.reports || [];
   state.cache.measurements = measurements.measurements || [];
   state.cache.bioimpedance = bioimpedance.records || [];
@@ -1283,6 +1734,8 @@ async function loadAllData() {
   state.cache.nutrition = nutrition.nutrition || [];
 
   renderMetricCards();
+  renderProfileSummary();
+  renderProgressPhotos();
   renderClinicalOverview();
   renderDailyComparison();
   renderWorkoutInsights();
@@ -1412,7 +1865,7 @@ function setupActions() {
 function setupForms() {
   bindForm("nutrition-form", async (payload, form) => {
     const userId = await ensureUser();
-    const mode = payload.mode || "register";
+    const mode = payload.mode || "draft";
 
     if (mode === "chat") {
       const chat = await apiJson("/api/nutrition/chat", {
@@ -1420,7 +1873,15 @@ function setupForms() {
         body: JSON.stringify({ user_id: userId, text: payload.text }),
       });
 
-      writeOutput("nutrition-result", chat.replyText || "Sem resposta.");
+      writeOutputHtml(
+        "nutrition-result",
+        `
+          <article class="analysis-card">
+            <h4>Resposta em modo conversa</h4>
+            <p>${escapeHtml(chat.replyText || "Sem resposta.")}</p>
+          </article>
+        `
+      );
       form.reset();
       setStatus("Resposta de conversa gerada (sem registro).", "success");
       return;
@@ -1428,13 +1889,24 @@ function setupForms() {
 
     const analysis = await apiJson("/api/nutrition/analyze-text", {
       method: "POST",
-      body: JSON.stringify({ user_id: userId, text: payload.text }),
+      body: JSON.stringify({ user_id: userId, text: payload.text, persist: false }),
     });
 
-    writeOutput("nutrition-result", formatNutritionResult(analysis));
+    setNutritionDraftFromAnalysis(analysis, "texto");
+    writeOutputHtml(
+      "nutrition-result",
+      buildNutritionAnalysisHtml(analysis, {
+        title: "Última análise por texto",
+        subtitle: "Ainda não foi registrada. Revise o rascunho abaixo e confirme quando estiver certo.",
+      })
+    );
+    renderNutritionDraftPreview();
 
+    const previousMode = form.querySelector("select[name='mode']")?.value || "draft";
     form.reset();
-    await refreshAllWithStatus("Alimentação analisada e registrada.");
+    const modeSelect = form.querySelector("select[name='mode']");
+    if (modeSelect) modeSelect.value = previousMode;
+    setStatus("Texto analisado e adicionado ao rascunho. Revise antes de registrar.", "success");
   });
 
   const nutritionImageForm = document.getElementById("nutrition-image-form");
@@ -1447,10 +1919,19 @@ function setupForms() {
 
       const formData = new FormData(nutritionImageForm);
       formData.set("user_id", userId);
+      formData.set("persist", "false");
       const result = await apiFormData("/api/nutrition/analyze-image", formData);
-      writeOutput("nutrition-image-result", formatNutritionResult(result));
+      setNutritionDraftFromAnalysis(result, "foto");
+      writeOutputHtml(
+        "nutrition-image-result",
+        buildNutritionAnalysisHtml(result, {
+          title: "Última análise por foto",
+          subtitle: "A foto foi analisada, mas ainda não foi registrada.",
+        })
+      );
+      renderNutritionDraftPreview();
       nutritionImageForm.reset();
-      await refreshAllWithStatus("Foto analisada e refeicao registrada.");
+      setStatus("Foto analisada e adicionada ao rascunho.", "success");
     } catch (err) {
       writeOutput("nutrition-image-result", `Erro: ${err.message}`);
       setStatus(`Erro na foto da alimentacao: ${err.message}`, "error");
@@ -1467,14 +1948,75 @@ function setupForms() {
 
       const formData = new FormData(nutritionAudioForm);
       formData.set("user_id", userId);
+      formData.set("persist", "false");
       const result = await apiFormData("/api/nutrition/analyze-audio", formData);
-      writeOutput("nutrition-audio-result", formatNutritionResult(result));
+      setNutritionDraftFromAnalysis(result, "áudio");
+      writeOutputHtml(
+        "nutrition-audio-result",
+        buildNutritionAnalysisHtml(result, {
+          title: "Última análise por áudio",
+          subtitle: "O áudio foi analisado, mas ainda não foi registrado.",
+        })
+      );
+      renderNutritionDraftPreview();
       nutritionAudioForm.reset();
-      await refreshAllWithStatus("Audio analisado e refeicao registrada.");
+      setStatus("Áudio analisado e adicionado ao rascunho.", "success");
     } catch (err) {
       writeOutput("nutrition-audio-result", `Erro: ${err.message}`);
       setStatus(`Erro no audio da alimentacao: ${err.message}`, "error");
     }
+  });
+
+  const nutritionDraftForm = document.getElementById("nutrition-draft-form");
+  nutritionDraftForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    try {
+      if (!state.nutritionDraft) {
+        throw new Error("Nenhum rascunho ativo para registrar.");
+      }
+
+      const userId = await ensureUser();
+      const formData = new FormData(nutritionDraftForm);
+      const mealSlot = String(formData.get("meal_slot") || "").trim();
+      const slotKey = MEAL_SLOTS.some((item) => item.key === mealSlot) ? mealSlot : state.nutritionDraft.analysis.meal_slot;
+
+      setStatus("Registrando refeição do rascunho...", "info");
+      await apiJson("/api/nutrition/register-draft", {
+        method: "POST",
+        body: JSON.stringify({
+          user_id: userId,
+          analysis: {
+            ...state.nutritionDraft.analysis,
+            meal_slot: slotKey || "outro",
+          },
+          meal_slot: slotKey || "outro",
+          raw_input_text: (state.nutritionDraft.rawInputs || []).join(" | "),
+          input_type: state.nutritionDraft.inputType || "manual",
+          source: "web",
+          model_used: state.nutritionDraft.modelUsed || "web_draft",
+          raw_response: state.nutritionDraft.rawResponse || "",
+          extra_ai_payload: {
+            draft_sources: state.nutritionDraft.sources || [],
+            draft_inputs_count: (state.nutritionDraft.rawInputs || []).length,
+            draft_registered_via: "web",
+          },
+        }),
+      });
+
+      clearNutritionDraft();
+      renderNutritionDraftPreview();
+      nutritionDraftForm.reset();
+      await refreshAllWithStatus("Refeição registrada a partir do rascunho.");
+    } catch (err) {
+      setStatus(`Erro ao registrar rascunho: ${err.message}`, "error");
+    }
+  });
+
+  document.getElementById("nutrition-draft-clear")?.addEventListener("click", () => {
+    clearNutritionDraft();
+    renderNutritionDraftPreview();
+    setStatus("Rascunho descartado.", "info");
   });
 
   bindForm("hydration-form", async (payload, form) => {
@@ -1516,6 +2058,27 @@ function setupForms() {
 
     form.reset();
     await refreshAllWithStatus("Medidas corporais salvas.");
+  });
+
+  const measurementPhotoForm = document.getElementById("measurement-photo-form");
+  measurementPhotoForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    try {
+      const userId = await ensureUser();
+      setStatus("Enviando foto de evolução...", "info");
+
+      const formData = new FormData(measurementPhotoForm);
+      formData.set("user_id", userId);
+      const result = await apiFormData("/api/measurements/progress-photo", formData);
+
+      writeOutput("measurement-photo-result", result);
+      measurementPhotoForm.reset();
+      await refreshAllWithStatus("Foto de evolução salva.");
+    } catch (err) {
+      writeOutput("measurement-photo-result", `Erro: ${err.message}`);
+      setStatus(`Erro no upload da foto de evolução: ${err.message}`, "error");
+    }
   });
 
   bindForm("bioimpedance-form", async (payload, form) => {
@@ -1617,6 +2180,7 @@ async function boot() {
   setupDateFilter();
   setupActions();
   setupForms();
+  renderNutritionDraftPreview();
 
   try {
     setStatus("Carregando dados...", "info");

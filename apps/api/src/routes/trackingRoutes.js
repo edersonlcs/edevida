@@ -7,6 +7,7 @@ const {
   userGoalCreateController,
   userGoalListController,
   bodyMeasurementCreateController,
+  bodyMeasurementProgressPhotoUploadController,
   bodyMeasurementListController,
   bioimpedanceCreateController,
   bioimpedanceUploadController,
@@ -22,6 +23,7 @@ const {
   nutritionTextAnalyzeController,
   nutritionImageAnalyzeController,
   nutritionAudioAnalyzeController,
+  nutritionRegisterDraftController,
   nutritionChatController,
   reportGenerateController,
   reportListController,
@@ -45,6 +47,7 @@ router.post("/api/goals", userGoalCreateController);
 
 router.get("/api/measurements", bodyMeasurementListController);
 router.post("/api/measurements", bodyMeasurementCreateController);
+router.post("/api/measurements/progress-photo", upload.single("file"), bodyMeasurementProgressPhotoUploadController);
 
 router.get("/api/bioimpedance", bioimpedanceListController);
 router.post("/api/bioimpedance", bioimpedanceCreateController);
@@ -65,6 +68,7 @@ router.get("/api/nutrition", nutritionListController);
 router.post("/api/nutrition/analyze-text", nutritionTextAnalyzeController);
 router.post("/api/nutrition/analyze-image", upload.single("file"), nutritionImageAnalyzeController);
 router.post("/api/nutrition/analyze-audio", upload.single("file"), nutritionAudioAnalyzeController);
+router.post("/api/nutrition/register-draft", nutritionRegisterDraftController);
 router.post("/api/nutrition/chat", nutritionChatController);
 
 router.get("/api/reports", reportListController);

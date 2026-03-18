@@ -107,6 +107,7 @@ async function createBodyMeasurement({
   arm_cm,
   thigh_cm,
   calf_cm,
+  progress_photo_url,
   notes,
   recorded_at,
 }) {
@@ -134,6 +135,7 @@ async function createBodyMeasurement({
       arm_cm: parseNumeric(arm_cm),
       thigh_cm: parseNumeric(thigh_cm),
       calf_cm: parseNumeric(calf_cm),
+      progress_photo_url: progress_photo_url || null,
       notes: notes || null,
       recorded_at: recorded_at || new Date().toISOString(),
     })
