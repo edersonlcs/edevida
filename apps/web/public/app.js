@@ -5,6 +5,7 @@ const state = {
     fat: null,
     hydration: null,
     measurements: null,
+    examTrend: null,
   },
   filter: {
     from: "",
@@ -16,14 +17,18 @@ const state = {
     aiInfo: null,
     reports: [],
     measurements: [],
+    measurementsAll: [],
     bioimpedance: [],
+    bioimpedanceAll: [],
     exams: [],
+    examsAll: [],
     hydration: [],
     workouts: [],
     nutrition: [],
     telegramWebhook: null,
   },
   nutritionDraft: null,
+  nutritionChatHistory: [],
 };
 
 const STATUS_CLASSES = ["status-info", "status-success", "status-warning", "status-error"];
@@ -163,6 +168,16 @@ function todayInputValue() {
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const day = String(now.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function currentDateTimeLocalValue() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  const hours = String(now.getHours()).padStart(2, "0");
+  const minutes = String(now.getMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
 function dateToInputValue(date) {
@@ -715,6 +730,89 @@ function renderProfileSummary() {
   metaNode.textContent = sourceDate
     ? `Dados atuais baseados no registro de ${fmtDateTime(sourceDate)}.`
     : "Dados atuais baseados no seu perfil cadastrado.";
+}
+
+function fillProfileBaseForm(profile) {
+  const form = document.getElementById("profile-form");
+  if (!form) return;
+
+  const heightInput = form.querySelector("input[name='height_cm']");
+  const baselineWeightInput = form.querySelector("input[name='baseline_weight_kg']");
+  const sexSelect = form.querySelector("select[name='biological_sex']");
+  const routineNotesInput = form.querySelector("textarea[name='routine_notes']");
+
+  if (heightInput) heightInput.value = profile?.height_cm ?? "";
+  if (baselineWeightInput) baselineWeightInput.value = profile?.baseline_weight_kg ?? "";
+  if (sexSelect) sexSelect.value = profile?.biological_sex || "";
+  if (routineNotesInput) routineNotesInput.value = profile?.routine_notes || "";
+}
+
+function renderCadastroPanel() {
+  const profile = state.cache.profile || null;
+  fillProfileBaseForm(profile);
+
+  const profileFeedbackNode = document.getElementById("profile-current-values");
+  if (profileFeedbackNode) {
+    if (!profile) {
+      profileFeedbackNode.textContent = "Sem perfil salvo ainda.";
+    } else {
+      const height = toNumberOrNull(profile.height_cm);
+      const weight = toNumberOrNull(profile.baseline_weight_kg);
+      const sex =
+        profile.biological_sex === "male"
+          ? "masculino"
+          : profile.biological_sex === "female"
+            ? "feminino"
+            : profile.biological_sex === "prefer_not_to_say"
+              ? "prefiro não informar"
+              : profile.biological_sex || "não informado";
+
+      profileFeedbackNode.textContent = `Valores atuais: altura ${height !== null ? `${fmtNumber(height)} cm` : "-"}, peso base ${weight !== null ? `${fmtNumber(weight)} kg` : "-"}, sexo ${sex}.`;
+    }
+  }
+
+  const historyNode = document.getElementById("cadastro-history-list");
+  if (!historyNode) return;
+
+  const measurementsSource = state.cache.measurementsAll?.length ? state.cache.measurementsAll : state.cache.measurements || [];
+  const entries = sortAscByDate(measurementsSource, "recorded_at").reverse().slice(0, 12);
+  if (!entries.length) {
+    historyNode.innerHTML = emptyState("Sem registros de cadastro ainda.");
+    return;
+  }
+
+  historyNode.innerHTML = entries.map((item) => {
+    const isPhotoEntry = Boolean(item.progress_photo_url);
+    const weight = toNumberOrNull(item.weight_kg);
+    const waist = toNumberOrNull(item.waist_cm);
+    const abdomen = toNumberOrNull(item.abdomen_cm);
+    const hip = toNumberOrNull(item.hip_cm);
+    const tagClass = isPhotoEntry ? "quality-bom" : "quality-default";
+    const tagLabel = isPhotoEntry ? "foto + medidas" : "medidas manuais";
+    const extra = [
+      weight !== null ? `peso ${fmtNumber(weight)} kg` : null,
+      waist !== null ? `cintura ${fmtNumber(waist)} cm` : null,
+      abdomen !== null ? `abdômen ${fmtNumber(abdomen)} cm` : null,
+      hip !== null ? `quadril ${fmtNumber(hip)} cm` : null,
+    ]
+      .filter(Boolean)
+      .join(" | ");
+
+    const photoLink = isPhotoEntry
+      ? `<a class="file-link" href="${escapeHtml(item.progress_photo_url)}" target="_blank" rel="noreferrer">Abrir foto</a>`
+      : "<span class=\"muted\">Sem foto</span>";
+
+    return `
+      <article class="history-item">
+        <header>
+          <strong>${fmtDateTime(item.recorded_at)}</strong>
+          <span class="tag ${tagClass}">${tagLabel}</span>
+        </header>
+        <p>${escapeHtml(extra || "Sem medidas numéricas associadas")}</p>
+        <p>${photoLink}</p>
+      </article>
+    `;
+  }).join("");
 }
 
 function renderProgressPhotos() {
@@ -1626,10 +1724,45 @@ function clearNutritionDraft() {
   state.nutritionDraft = null;
 }
 
+function renderNutritionChatThread() {
+  const container = document.getElementById("nutrition-chat-thread");
+  if (!container) return;
+
+  const messages = state.nutritionChatHistory || [];
+  if (!messages.length) {
+    container.innerHTML = '<p class="muted">Conversa aberta. Você pode perguntar livremente por aqui.</p>';
+    return;
+  }
+
+  container.innerHTML = messages
+    .map(
+      (message) => `
+        <article class="chat-bubble ${message.role === "assistant" ? "chat-assistant" : "chat-user"}">
+          <p class="chat-role">${message.role === "assistant" ? "IA" : "Você"}</p>
+          <p>${escapeHtml(message.text || "")}</p>
+        </article>
+      `
+    )
+    .join("");
+}
+
+function appendNutritionChatMessage(role, text) {
+  const content = String(text || "").trim();
+  if (!content) return;
+
+  state.nutritionChatHistory = [...(state.nutritionChatHistory || []), { role, text: content }].slice(-30);
+  renderNutritionChatThread();
+}
+
 function renderNutritionDraftPreview() {
   const node = document.getElementById("nutrition-draft-preview");
   const slotSelect = document.querySelector("#nutrition-draft-form select[name='meal_slot']");
+  const recordedAtInput = document.querySelector("#nutrition-draft-form input[name='recorded_at']");
   if (!node) return;
+
+  if (recordedAtInput && !recordedAtInput.value) {
+    recordedAtInput.value = currentDateTimeLocalValue();
+  }
 
   if (!state.nutritionDraft) {
     node.textContent = "Sem rascunho ativo.";
@@ -2295,6 +2428,63 @@ function renderHistories() {
   `);
 }
 
+function extractUploadUrlFromNotes(notes) {
+  const raw = String(notes || "");
+  const match = raw.match(/(\/uploads\/[^\s|]+)/i);
+  return match ? match[1] : "";
+}
+
+function renderAttachmentsHistory() {
+  const container = document.getElementById("attachments-history-list");
+  if (!container) return;
+
+  const bioSource = state.cache.bioimpedanceAll?.length ? state.cache.bioimpedanceAll : state.cache.bioimpedance || [];
+  const bioEntries = bioSource.map((item) => ({
+    kind: "bioimpedância",
+    title: "Anexo de bioimpedância",
+    date: item.recorded_at || item.created_at,
+    markersCount: null,
+    fileUrl: extractUploadUrlFromNotes(item.notes),
+  }));
+
+  const examEntries = (state.cache.examsAll?.length ? state.cache.examsAll : state.cache.exams || []).map((item) => ({
+    kind: "exame",
+    title: item.exam_name || "Anexo de exame",
+    date: item.exam_date || item.created_at,
+    markersCount: Object.keys(item.markers || {}).length,
+    fileUrl: item.file_url || "",
+  }));
+
+  const merged = [...bioEntries, ...examEntries]
+    .filter((item) => Boolean(item.fileUrl))
+    .sort((a, b) => {
+      const aTs = parseDateForDisplay(a.date)?.getTime() || 0;
+      const bTs = parseDateForDisplay(b.date)?.getTime() || 0;
+      return bTs - aTs;
+    })
+    .slice(0, 20);
+
+  if (!merged.length) {
+    container.innerHTML = emptyState("Sem anexos enviados ainda.");
+    return;
+  }
+
+  container.innerHTML = merged.map((item) => `
+    <article class="history-item">
+      <header>
+        <strong>${escapeHtml(item.title)}</strong>
+        <span class="tag ${item.kind === "exame" ? "quality-default" : "quality-bom"}">${escapeHtml(item.kind)}</span>
+      </header>
+      <p>Data: ${escapeHtml(fmtDate(item.date))}${item.markersCount !== null ? ` | Marcadores: ${item.markersCount}` : ""}</p>
+      <p>${
+        item.fileUrl
+          ? `<a class="file-link" href="${escapeHtml(item.fileUrl)}" target="_blank" rel="noreferrer">Abrir anexo</a>`
+          : "<span class=\"muted\">Arquivo referenciado na nota do registro</span>"
+      }</p>
+    </article>
+  `).join("");
+}
+
 function normalizeMarkerName(value) {
   return String(value || "")
     .normalize("NFD")
@@ -2330,17 +2520,205 @@ function markerFlagTag(flag) {
   return '<span class="signal signal-good">ok</span>';
 }
 
+function parseMarkerNumericValue(value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+
+  const normalized = String(value)
+    .replace(",", ".")
+    .replace(/[^\d.-]+/g, "")
+    .trim();
+  if (!normalized) return null;
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function markerNumericByAliases(markers, aliases) {
+  const found = findMarkerByAliases(markers, aliases);
+  if (!found) return null;
+  return parseMarkerNumericValue(found.payload?.value);
+}
+
+function markerTrendStatus(current, previous, lowerIsBetter = true) {
+  if (current === null || previous === null) return "sem comparação";
+  const delta = current - previous;
+  if (Math.abs(delta) < 0.0001) return "estável";
+  if (lowerIsBetter) return delta < 0 ? "melhorou" : "piorou";
+  return delta > 0 ? "melhorou" : "piorou";
+}
+
+function buildExamTrendSummary(exams, trendDefs) {
+  if (!exams || exams.length < 2) {
+    return "Comparação detalhada será exibida quando houver pelo menos 2 exames com os mesmos marcadores.";
+  }
+
+  const parts = [];
+  for (const def of trendDefs) {
+    const values = exams
+      .map((exam) => ({
+        date: exam.exam_date || exam.created_at,
+        value: markerNumericByAliases(exam.markers || {}, def.aliases),
+      }))
+      .filter((item) => item.value !== null)
+      .slice(0, 2);
+
+    if (values.length < 2) continue;
+
+    const current = values[0];
+    const previous = values[1];
+    const delta = current.value - previous.value;
+    const status = markerTrendStatus(current.value, previous.value, def.lowerIsBetter !== false);
+    const deltaText = `${delta > 0 ? "+" : ""}${fmtNumber(delta, 2)} ${def.unit || ""}`.trim();
+    parts.push(`${def.label}: ${fmtNumber(current.value, 2)} (${deltaText} vs anterior, ${status})`);
+  }
+
+  return parts.length
+    ? parts.join(" | ")
+    : "Ainda sem pontos suficientes para comparar evolução dos mesmos marcadores.";
+}
+
+function renderExamTrendChart(exams) {
+  const summaryNode = document.getElementById("exam-trend-summary");
+  const chartId = "chart-exam-trend";
+  const trendDefs = [
+    {
+      label: "Creatinina",
+      aliases: ["creatinina"],
+      unit: "mg/dL",
+      color: "#d35f2f",
+      yAxisId: "yRenal",
+      lowerIsBetter: true,
+    },
+    {
+      label: "LDL",
+      aliases: ["ldl"],
+      unit: "mg/dL",
+      color: "#267cb7",
+      yAxisId: "yMg",
+      lowerIsBetter: true,
+    },
+    {
+      label: "Glicose jejum",
+      aliases: ["glicose de jejum", "glicemia de jejum", "glicose jejum"],
+      unit: "mg/dL",
+      color: "#2f8f83",
+      yAxisId: "yMg",
+      lowerIsBetter: true,
+    },
+    {
+      label: "HbA1c",
+      aliases: ["hemoglobina glicada", "hba1c"],
+      unit: "%",
+      color: "#805ad5",
+      yAxisId: "yPct",
+      lowerIsBetter: true,
+    },
+  ];
+
+  const ordered = [...(exams || [])].sort((a, b) => {
+    const aTs = parseDateForDisplay(a.exam_date || a.created_at)?.getTime() || 0;
+    const bTs = parseDateForDisplay(b.exam_date || b.created_at)?.getTime() || 0;
+    return aTs - bTs;
+  });
+  const labels = ordered.map((exam) => fmtDate(exam.exam_date || exam.created_at));
+
+  const datasets = trendDefs.map((def) => ({
+    label: `${def.label} (${def.unit})`,
+    data: ordered.map((exam) => markerNumericByAliases(exam.markers || {}, def.aliases)),
+    borderColor: def.color,
+    backgroundColor: `${def.color}33`,
+    yAxisID: def.yAxisId,
+    tension: 0.22,
+    pointRadius: 3,
+    spanGaps: true,
+  }));
+
+  const hasData = datasets.some((dataset) => dataset.data.some((value) => value !== null));
+  if (!hasData) {
+    if (state.charts.examTrend) {
+      state.charts.examTrend.destroy();
+      state.charts.examTrend = null;
+    }
+    if (summaryNode) {
+      summaryNode.textContent = "Sem dados numéricos suficientes para gerar gráfico de comparação.";
+    }
+    return;
+  }
+
+  upsertChart("examTrend", chartId, {
+    type: "line",
+    data: {
+      labels,
+      datasets,
+    },
+    options: {
+      ...baseChartOptions(),
+      plugins: {
+        legend: {
+          display: true,
+          position: "bottom",
+          labels: {
+            boxWidth: 12,
+            usePointStyle: true,
+          },
+        },
+      },
+      scales: {
+        yMg: {
+          type: "linear",
+          position: "left",
+          title: { display: true, text: "mg/dL" },
+        },
+        yRenal: {
+          type: "linear",
+          position: "right",
+          grid: { drawOnChartArea: false },
+          title: { display: true, text: "Creatinina (mg/dL)" },
+        },
+        yPct: {
+          type: "linear",
+          position: "right",
+          grid: { drawOnChartArea: false },
+          title: { display: true, text: "HbA1c (%)" },
+        },
+      },
+    },
+  });
+
+  if (summaryNode) {
+    const latestFirst = [...exams].sort((a, b) => {
+      const aTs = parseDateForDisplay(a.exam_date || a.created_at)?.getTime() || 0;
+      const bTs = parseDateForDisplay(b.exam_date || b.created_at)?.getTime() || 0;
+      return bTs - aTs;
+    });
+    summaryNode.textContent = buildExamTrendSummary(latestFirst, trendDefs);
+  }
+}
+
 function renderExamPanel() {
   const kpiContainer = document.getElementById("exam-kpi-cards");
   const alertsContainer = document.getElementById("exam-alerts-list");
   const timelineContainer = document.getElementById("exam-timeline-list");
   if (!kpiContainer || !alertsContainer || !timelineContainer) return;
 
-  const exams = state.cache.exams || [];
+  const examsSource = state.cache.examsAll?.length ? state.cache.examsAll : state.cache.exams || [];
+  const exams = [...examsSource].sort((a, b) => {
+    const aTime = parseDateForDisplay(a?.exam_date || a?.created_at)?.getTime() || 0;
+    const bTime = parseDateForDisplay(b?.exam_date || b?.created_at)?.getTime() || 0;
+    return bTime - aTime;
+  });
+
   if (!exams.length) {
-    kpiContainer.innerHTML = emptyState("Sem exames no período filtrado.");
+    kpiContainer.innerHTML = emptyState("Sem exames cadastrados ainda.");
     alertsContainer.innerHTML = emptyState("Sem alertas para exibir.");
     timelineContainer.innerHTML = emptyState("Sem linha do tempo de exames.");
+    const summaryNode = document.getElementById("exam-trend-summary");
+    if (summaryNode) summaryNode.textContent = "Sem dados suficientes para comparação.";
+    if (state.charts.examTrend) {
+      state.charts.examTrend.destroy();
+      state.charts.examTrend = null;
+    }
     return;
   }
 
@@ -2395,7 +2773,7 @@ function renderExamPanel() {
     alertsContainer.innerHTML = `
       <article class="history-item">
         <p><strong>Sem alertas críticos</strong> no exame mais recente.</p>
-        <p class="muted">Exame base: ${escapeHtml(latestWithMarkers.exam_name || "Exame")} (${fmtDate(latestWithMarkers.exam_date || latestWithMarkers.created_at)})</p>
+        <p class="muted">Base clínica atual: ${escapeHtml(latestWithMarkers.exam_name || "Exame")} (${fmtDate(latestWithMarkers.exam_date || latestWithMarkers.created_at)})</p>
       </article>
     `;
   } else {
@@ -2435,6 +2813,8 @@ function renderExamPanel() {
       </article>
     `;
   }).join("");
+
+  renderExamTrendChart(exams);
 }
 
 function getChartContext(id) {
@@ -2766,14 +3146,17 @@ async function loadAllData() {
     ...filterParams,
   };
 
-  const [dashboard, profile, aiInfo, reports, measurements, bioimpedance, exams, hydration, workouts, nutrition] = await Promise.all([
+  const [dashboard, profile, aiInfo, reports, measurements, measurementsAll, bioimpedance, bioimpedanceAll, exams, examsAll, hydration, workouts, nutrition] = await Promise.all([
     apiJson(`/api/dashboard/overview?${queryStringFromObject({ user_id: userId })}`),
     apiJson(`/api/profile?${queryStringFromObject({ user_id: userId })}`),
     apiJson("/api/ai/info").catch((error) => ({ ok: false, error: error.message })),
     apiJson(`/api/reports?${queryStringFromObject({ user_id: userId, period: "daily", limit: 14 })}`),
     apiJson(`/api/measurements?${queryStringFromObject({ ...common, limit: 200 })}`),
+    apiJson(`/api/measurements?${queryStringFromObject({ user_id: userId, limit: 300 })}`),
     apiJson(`/api/bioimpedance?${queryStringFromObject({ ...common, limit: 200 })}`),
+    apiJson(`/api/bioimpedance?${queryStringFromObject({ user_id: userId, limit: 300 })}`),
     apiJson(`/api/medical-exams?${queryStringFromObject({ ...common, limit: 150 })}`),
+    apiJson(`/api/medical-exams?${queryStringFromObject({ user_id: userId, limit: 300 })}`),
     apiJson(`/api/hydration?${queryStringFromObject({ ...common, limit: 500 })}`),
     apiJson(`/api/workouts?${queryStringFromObject({ ...common, limit: 300 })}`),
     apiJson(`/api/nutrition?${queryStringFromObject({ ...common, limit: 300 })}`),
@@ -2784,20 +3167,25 @@ async function loadAllData() {
   state.cache.aiInfo = aiInfo || null;
   state.cache.reports = reports.reports || [];
   state.cache.measurements = measurements.measurements || [];
+  state.cache.measurementsAll = measurementsAll.measurements || [];
   state.cache.bioimpedance = bioimpedance.records || [];
+  state.cache.bioimpedanceAll = bioimpedanceAll.records || [];
   state.cache.exams = exams.exams || [];
+  state.cache.examsAll = examsAll.exams || [];
   state.cache.hydration = hydration.hydration || [];
   state.cache.workouts = workouts.workouts || [];
   state.cache.nutrition = nutrition.nutrition || [];
 
   renderMetricCards();
   renderProfileSummary();
+  renderCadastroPanel();
   renderProgressPhotos();
   renderClinicalOverview();
   renderDailyComparison();
   renderWorkoutInsights();
   renderReports();
   renderHistories();
+  renderAttachmentsHistory();
   renderExamPanel();
   renderNutritionDashboard();
   renderAiInfo();
@@ -2982,47 +3370,39 @@ async function reviseCurrentNutritionDraft(correctionText) {
 function setupForms() {
   bindForm("nutrition-form", async (payload, form) => {
     const userId = await ensureUser();
-    const mode = payload.mode || "draft";
+    const mode = payload.mode || "chat";
+    const rawText = String(payload.text || "").trim();
+    if (!rawText) {
+      throw new Error("Digite uma mensagem antes de enviar.");
+    }
 
     if (mode === "chat") {
+      appendNutritionChatMessage("user", rawText);
       const chat = await apiJson("/api/nutrition/chat", {
         method: "POST",
-        body: JSON.stringify({ user_id: userId, text: payload.text }),
+        body: JSON.stringify({ user_id: userId, text: rawText }),
       });
 
-      writeOutputHtml(
-        "nutrition-result",
-        `
-          <article class="analysis-card">
-            <h4>Resposta em modo conversa</h4>
-            <p>${escapeHtml(chat.replyText || "Sem resposta.")}</p>
-          </article>
-        `
-      );
+      appendNutritionChatMessage("assistant", chat.replyText || "Sem resposta.");
+      renderNutritionChatThread();
+      const previousMode = form.querySelector("select[name='mode']")?.value || "chat";
       form.reset();
+      const modeSelect = form.querySelector("select[name='mode']");
+      if (modeSelect) modeSelect.value = previousMode;
+      syncNutritionTextUiByMode();
       setStatus("Resposta de conversa gerada (sem registro).", "success");
       return;
     }
 
-    const rawText = String(payload.text || "").trim();
     if (state.nutritionDraft && isLikelyDraftCorrectionText(rawText)) {
       const revised = await reviseCurrentNutritionDraft(rawText);
-      writeOutputHtml(
-        "nutrition-result",
-        buildNutritionAnalysisHtml(
-          { analysis: state.nutritionDraft.analysis },
-          {
-            title: "Correção aplicada ao rascunho",
-            subtitle: "O rascunho foi revisado e substituído com a nova correção.",
-          }
-        )
-      );
       renderNutritionDraftPreview();
 
-      const previousMode = form.querySelector("select[name='mode']")?.value || "draft";
+      const previousMode = form.querySelector("select[name='mode']")?.value || "chat";
       form.reset();
       const modeSelect = form.querySelector("select[name='mode']");
       if (modeSelect) modeSelect.value = previousMode;
+      syncNutritionTextUiByMode();
       setStatus("Correção aplicada no rascunho. Revise e registre quando estiver certo.", "success");
       return revised;
     }
@@ -3033,20 +3413,42 @@ function setupForms() {
     });
 
     setNutritionDraftFromAnalysis(analysis, "texto");
-    writeOutputHtml(
-      "nutrition-result",
-      buildNutritionAnalysisHtml(analysis, {
-        title: "Última análise por texto",
-        subtitle: "Ainda não foi registrada. Revise o rascunho abaixo e confirme quando estiver certo.",
-      })
-    );
     renderNutritionDraftPreview();
 
-    const previousMode = form.querySelector("select[name='mode']")?.value || "draft";
+    const previousMode = form.querySelector("select[name='mode']")?.value || "chat";
     form.reset();
     const modeSelect = form.querySelector("select[name='mode']");
     if (modeSelect) modeSelect.value = previousMode;
+    syncNutritionTextUiByMode();
     setStatus("Texto analisado e adicionado ao rascunho. Revise antes de registrar.", "success");
+  });
+
+  const nutritionTextForm = document.getElementById("nutrition-form");
+  const nutritionTextModeSelect = nutritionTextForm?.querySelector("select[name='mode']");
+  const nutritionTextInput = nutritionTextForm?.querySelector("textarea[name='text']");
+  const nutritionTextSubmitButton = nutritionTextForm?.querySelector("button[type='submit']");
+
+  function syncNutritionTextUiByMode() {
+    const currentMode = nutritionTextModeSelect?.value || "chat";
+    if (nutritionTextSubmitButton) {
+      nutritionTextSubmitButton.textContent = currentMode === "chat" ? "Enviar mensagem" : "Analisar para rascunho";
+    }
+    if (nutritionTextInput) {
+      nutritionTextInput.placeholder =
+        currentMode === "chat"
+          ? "Ex.: Estou com vontade de doce agora, como ajusto meu dia?"
+          : "Ex.: Almoço: arroz, feijão, frango grelhado e 400 ml de água";
+    }
+  }
+
+  nutritionTextModeSelect?.addEventListener("change", syncNutritionTextUiByMode);
+  syncNutritionTextUiByMode();
+  renderNutritionChatThread();
+
+  document.getElementById("nutrition-chat-clear")?.addEventListener("click", () => {
+    state.nutritionChatHistory = [];
+    renderNutritionChatThread();
+    setStatus("Conversa limpa.", "info");
   });
 
   const nutritionImageForm = document.getElementById("nutrition-image-form");
@@ -3073,18 +3475,11 @@ function setupForms() {
       formData.set("persist", "false");
       const result = await apiFormData("/api/nutrition/analyze-image", formData);
       setNutritionDraftFromAnalysis(result, "foto");
-      writeOutputHtml(
-        "nutrition-image-result",
-        buildNutritionAnalysisHtml(result, {
-          title: "Última análise por foto",
-          subtitle: "A foto foi analisada, mas ainda não foi registrada.",
-        })
-      );
       renderNutritionDraftPreview();
       nutritionImageForm.reset();
       setStatus("Foto analisada e adicionada ao rascunho.", "success");
     } catch (err) {
-      writeOutput("nutrition-image-result", `Erro: ${err.message}`);
+      writeOutput("nutrition-draft-preview", `Erro: ${err.message}`);
       setStatus(`Erro na foto da alimentacao: ${err.message}`, "error");
     }
   });
@@ -3102,18 +3497,11 @@ function setupForms() {
       formData.set("persist", "false");
       const result = await apiFormData("/api/nutrition/analyze-audio", formData);
       setNutritionDraftFromAnalysis(result, "áudio");
-      writeOutputHtml(
-        "nutrition-audio-result",
-        buildNutritionAnalysisHtml(result, {
-          title: "Última análise por áudio",
-          subtitle: "O áudio foi analisado, mas ainda não foi registrado.",
-        })
-      );
       renderNutritionDraftPreview();
       nutritionAudioForm.reset();
       setStatus("Áudio analisado e adicionado ao rascunho.", "success");
     } catch (err) {
-      writeOutput("nutrition-audio-result", `Erro: ${err.message}`);
+      writeOutput("nutrition-draft-preview", `Erro: ${err.message}`);
       setStatus(`Erro no audio da alimentacao: ${err.message}`, "error");
     }
   });
@@ -3130,6 +3518,8 @@ function setupForms() {
       const userId = await ensureUser();
       const formData = new FormData(nutritionDraftForm);
       const mealSlot = String(formData.get("meal_slot") || "").trim();
+      const recordedAtRaw = String(formData.get("recorded_at") || "").trim();
+      const recordedAt = recordedAtRaw ? recordedAtRaw.replace("T", " ") : "";
       const slotKey = MEAL_SLOTS.some((item) => item.key === mealSlot) ? mealSlot : state.nutritionDraft.analysis.meal_slot;
 
       setStatus("Registrando refeição do rascunho...", "info");
@@ -3147,6 +3537,7 @@ function setupForms() {
           source: "web",
           model_used: state.nutritionDraft.modelUsed || "web_draft",
           raw_response: state.nutritionDraft.rawResponse || "",
+          recorded_at: recordedAt || undefined,
           extra_ai_payload: {
             draft_sources: state.nutritionDraft.sources || [],
             draft_inputs_count: (state.nutritionDraft.rawInputs || []).length,
@@ -3158,6 +3549,8 @@ function setupForms() {
       clearNutritionDraft();
       renderNutritionDraftPreview();
       nutritionDraftForm.reset();
+      const draftRecordedAtInput = nutritionDraftForm.querySelector("input[name='recorded_at']");
+      if (draftRecordedAtInput) draftRecordedAtInput.value = currentDateTimeLocalValue();
       await refreshAllWithStatus("Refeição registrada a partir do rascunho.");
     } catch (err) {
       setStatus(`Erro ao registrar rascunho: ${err.message}`, "error");
@@ -3181,16 +3574,6 @@ function setupForms() {
 
       setStatus("Aplicando correção no rascunho...", "info");
       await reviseCurrentNutritionDraft(correctionText);
-      writeOutputHtml(
-        "nutrition-result",
-        buildNutritionAnalysisHtml(
-          { analysis: state.nutritionDraft.analysis },
-          {
-            title: "Correção aplicada ao rascunho",
-            subtitle: "Rascunho revisado com sua instrução de correção.",
-          }
-        )
-      );
       renderNutritionDraftPreview();
       nutritionDraftCorrectionForm.reset();
       setStatus("Correção aplicada. Revise e registre quando estiver certo.", "success");
@@ -3222,7 +3605,7 @@ function setupForms() {
     await refreshAllWithStatus("Hidratação registrada.");
   });
 
-  bindForm("profile-form", async (payload, form) => {
+  bindForm("profile-form", async (payload) => {
     const userId = await ensureUser();
 
     await apiJson("/api/profile", {
@@ -3230,7 +3613,6 @@ function setupForms() {
       body: JSON.stringify({ user_id: userId, ...payload }),
     });
 
-    form.reset();
     await refreshAllWithStatus("Perfil salvo.");
   });
 

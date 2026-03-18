@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/web/styles.css?v=20260318n" />
+    <link rel="stylesheet" href="/web/styles.css?v=20260318r" />
   </head>
   <body>
     <div class="bg-layer"></div>
@@ -32,11 +32,11 @@
       <nav class="tabs card">
         <button class="tab-button is-active" data-tab="dashboard">Dashboard</button>
         <button class="tab-button" data-tab="nutricao">Nutrição</button>
-        <button class="tab-button" data-tab="cadastro">Cadastro</button>
         <button class="tab-button" data-tab="registros">Registros</button>
         <button class="tab-button" data-tab="anexos">Anexos</button>
         <button class="tab-button" data-tab="exames">Exames</button>
         <button class="tab-button" data-tab="historico">Histórico</button>
+        <button class="tab-button" data-tab="cadastro">Cadastro</button>
         <button class="tab-button" data-tab="telegram">Telegram</button>
         <button class="tab-button" data-tab="ia">IA</button>
       </nav>
@@ -254,6 +254,7 @@
                 <textarea name="routine_notes" rows="2" placeholder="Rotina e observações"></textarea>
                 <button class="btn-primary" type="submit">Salvar perfil</button>
               </form>
+              <p id="profile-current-values" class="muted">Sem perfil salvo ainda.</p>
             </article>
 
             <article class="card">
@@ -291,6 +292,11 @@
               </form>
             </article>
           </section>
+
+          <article class="card">
+            <h3>Histórico rápido do cadastro</h3>
+            <div id="cadastro-history-list" class="history-list"></div>
+          </article>
         </article>
       </section>
 
@@ -310,31 +316,39 @@
             <h3>Lançamentos do dia a dia</h3>
             <p class="muted">Fluxo principal para uso diário.</p>
           </header>
-          <section class="registros-subsection">
+          <section class="registros-subsection food-subsection">
             <header class="registros-subsection-header">
               <h4>1) Registro dos alimentos</h4>
               <p class="muted">Use texto, foto ou voz e confirme no rascunho antes de registrar.</p>
+              <div class="food-flow-hint">
+                <span class="tag quality-default">Passo 1: analisar</span>
+                <span class="tag quality-default">Passo 2: corrigir</span>
+                <span class="tag quality-bom">Passo 3: registrar</span>
+              </div>
             </header>
-            <section class="grid-2 registros-grid">
-              <article class="card">
+            <section class="registros-grid food-grid">
+              <article class="card food-card food-card-text">
                 <h3>Analisar alimentação (texto)</h3>
                 <form id="nutrition-form" class="stack">
                   <select name="mode">
-                    <option value="draft">Analisar para rascunho (sem gravar)</option>
                     <option value="chat">Somente conversar (sem registrar)</option>
+                    <option value="draft">Analisar para rascunho (sem gravar)</option>
                   </select>
                   <textarea
                     name="text"
                     rows="4"
-                    placeholder="Ex.: Almoço: arroz, feijão, frango grelhado e 400 ml de água"
+                    placeholder="Ex.: Estou com vontade de doce agora, como ajusto meu dia?"
                     required
                   ></textarea>
-                  <button class="btn-primary" type="submit">Analisar para rascunho</button>
+                  <button class="btn-primary" type="submit">Enviar mensagem</button>
                 </form>
-                <div id="nutrition-result" class="output output-rich"></div>
+                <div id="nutrition-chat-thread" class="chat-thread">
+                  <p class="muted">Conversa aberta. Você pode perguntar livremente por aqui.</p>
+                </div>
+                <button id="nutrition-chat-clear" class="btn-ghost" type="button">Limpar conversa</button>
               </article>
 
-              <article class="card">
+              <article class="card food-card food-card-photo">
                 <h3>Analisar alimentação (foto)</h3>
                 <form id="nutrition-image-form" class="stack">
                   <div class="photo-input-grid">
@@ -351,21 +365,19 @@
                   <input name="caption" type="text" placeholder="Legenda opcional da refeição" />
                   <button class="btn-primary" type="submit">Analisar foto para rascunho</button>
                 </form>
-                <div id="nutrition-image-result" class="output output-rich"></div>
               </article>
 
-              <article class="card">
+              <article class="card food-card food-card-audio">
                 <h3>Analisar alimentação (voz)</h3>
                 <form id="nutrition-audio-form" class="stack">
                   <input name="file" type="file" accept="audio/*" required />
                   <button class="btn-primary" type="submit">Analisar áudio para rascunho</button>
                 </form>
-                <div id="nutrition-audio-result" class="output output-rich"></div>
               </article>
 
-              <article class="card">
+              <article class="card food-card food-card-draft">
                 <h3>Rascunho de refeição (antes de registrar)</h3>
-                <p class="muted">Envie texto, foto e/ou áudio para completar o rascunho. Registre só quando estiver tudo certo.</p>
+                <p class="muted">Resultado da análise aparece aqui. Revise, corrija e registre quando estiver tudo certo.</p>
                 <div id="nutrition-draft-preview" class="output output-rich">Sem rascunho ativo.</div>
                 <form id="nutrition-draft-correction-form" class="stack">
                   <textarea
@@ -386,6 +398,10 @@
                     <option value="ceia">Ceia</option>
                     <option value="outro">Outro</option>
                   </select>
+                  <label class="filter-field">
+                    <span>Data/hora do registro</span>
+                    <input name="recorded_at" type="datetime-local" />
+                  </label>
                   <button class="btn-primary" type="submit">Registrar refeição do rascunho</button>
                   <button id="nutrition-draft-clear" class="btn-ghost" type="button">Descartar rascunho</button>
                 </form>
@@ -465,11 +481,17 @@
           <button id="load-workout-recommendation" class="btn-secondary">Gerar recomendação</button>
           <pre id="workout-recommendation" class="output"></pre>
         </article>
+
+        <article class="card">
+          <h3>Histórico de anexos enviados</h3>
+          <div id="attachments-history-list" class="history-list"></div>
+        </article>
       </section>
 
       <section id="tab-exames" class="tab-panel">
         <article class="card">
           <h3>Marcadores principais (rins, fígado e metabólico)</h3>
+          <p class="muted">Visão clínica sempre baseada no histórico completo de exames, não apenas no dia filtrado.</p>
           <div id="exam-kpi-cards" class="exam-kpi-grid"></div>
         </article>
 
@@ -481,6 +503,14 @@
         <article class="card">
           <h3>Linha do tempo de exames</h3>
           <div id="exam-timeline-list" class="history-list"></div>
+        </article>
+
+        <article class="card chart-card">
+          <h3>Comparação de marcadores (evolução)</h3>
+          <p id="exam-trend-summary" class="muted">Carregando comparação...</p>
+          <div class="chart-box">
+            <canvas id="chart-exam-trend"></canvas>
+          </div>
         </article>
       </section>
 
@@ -589,6 +619,6 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-    <script src="/web/app.js?v=20260318n" type="module"></script>
+    <script src="/web/app.js?v=20260318r" type="module"></script>
   </body>
 </html>

@@ -7,7 +7,9 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "check": "node -e \"console.log('api-check-ok')\""
+    "check": "node -e \"console.log('api-check-ok')\"",
+    "reset:test-data": "node scripts/reset-test-data.js",
+    "reset:test-data:dry": "node scripts/reset-test-data.js --dry-run"
   },
   "engines": {
     "node": ">=20"

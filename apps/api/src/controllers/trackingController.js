@@ -208,6 +208,7 @@ async function persistNutritionFromAnalysis({
   rawInputText,
   inputType,
   source,
+  recordedAt,
   modelUsed,
   rawResponse,
   extraAiPayload,
@@ -231,6 +232,7 @@ async function persistNutritionFromAnalysis({
     estimated_carbs_g: normalizedAnalysis.carbs_g ?? null,
     estimated_fat_g: normalizedAnalysis.fat_g ?? null,
     water_ml_recommended: normalizedAnalysis.water_recommended_ml ?? null,
+    recorded_at: recordedAt || undefined,
     ai_payload: mergedAiPayload,
   });
 
@@ -254,6 +256,7 @@ async function persistNutritionFromAnalysis({
       amount_ml: safeWaterIntakeMl,
       source: normalizeSource(source),
       notes: `Registro automatico extraido de rascunho ${normalizeInputType(inputType)}`,
+      recorded_at: recordedAt || undefined,
     }).catch(() => {});
   }
 
@@ -899,6 +902,7 @@ const nutritionRegisterDraftController = asyncHandler(async (req, res) => {
 
   const rawInputText = String(req.body?.raw_input_text || "").trim();
   const rawResponse = String(req.body?.raw_response || "").trim();
+  const recordedAt = normalizeRecordedAt(req.body?.recorded_at);
 
   const nutrition = await persistNutritionFromAnalysis({
     userId,
@@ -906,6 +910,7 @@ const nutritionRegisterDraftController = asyncHandler(async (req, res) => {
     rawInputText: rawInputText || normalizedAnalysis.summary || "[rascunho sem texto base]",
     inputType: normalizeInputType(req.body?.input_type || "manual"),
     source: normalizeSource(req.body?.source || "web"),
+    recordedAt,
     modelUsed: String(req.body?.model_used || "").trim() || "web_draft_register",
     rawResponse: rawResponse || formatNutritionReply(normalizedAnalysis),
     extraAiPayload:

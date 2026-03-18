@@ -28,14 +28,16 @@ const {
 function buildTelegramMainKeyboard() {
   return {
     keyboard: [
-      [{ text: "Resumo de hoje" }, { text: "Status do corpo" }],
-      [{ text: "Registrar refeicao" }, { text: "Sugestao proximo refeicao" }],
-      [{ text: "Plano de hoje" }, { text: "Falar com IA" }],
-      [{ text: "Painel" }, { text: "Help" }],
+      [{ text: "Resumo de hoje" }, { text: "Nutricao de hoje" }],
+      [{ text: "Status do corpo" }, { text: "Exames" }],
+      [{ text: "Sugestao proxima refeicao" }, { text: "Plano de hoje" }],
+      [{ text: "Falar com IA" }, { text: "Rascunho atual" }],
+      [{ text: "Registrar refeicao" }, { text: "Painel" }],
+      [{ text: "Help" }],
     ],
     resize_keyboard: true,
     is_persistent: true,
-    input_field_placeholder: "Envie refeição, foto, áudio ou use /chat",
+    input_field_placeholder: "Envie refeicao, foto, audio ou use os botoes",
   };
 }
 
@@ -458,6 +460,78 @@ const TELEGRAM_MEAL_SLOTS = [
   { key: "ceia", label: "Ceia" },
   { key: "outro", label: "Outro" },
 ];
+const TELEGRAM_MEAL_SLOTS_CORE = TELEGRAM_MEAL_SLOTS.filter((item) => item.key !== "outro");
+const TELEGRAM_MEAL_CALORIE_RATIO = {
+  cafe_da_manha: 0.2,
+  lanche_da_manha: 0.1,
+  almoco: 0.3,
+  lanche_da_tarde: 0.1,
+  janta: 0.25,
+  ceia: 0.05,
+};
+
+const SODIUM_ALERT_KEYWORDS = [
+  "sodio",
+  "sal",
+  "linguica",
+  "salsicha",
+  "bacon",
+  "presunto",
+  "salame",
+  "calabresa",
+  "embutido",
+  "ultraprocess",
+  "enlatado",
+  "instantaneo",
+];
+
+const SUGAR_ALERT_KEYWORDS = [
+  "acucar",
+  "doce",
+  "chocolate",
+  "refrigerante",
+  "sobremesa",
+  "biscoito recheado",
+  "sorvete",
+  "suco industrial",
+  "balas",
+  "brigadeiro",
+  "achocolatado",
+];
+
+const GOOD_FAT_KEYWORDS = [
+  "azeite",
+  "oliva",
+  "abacate",
+  "castanha",
+  "nozes",
+  "amendoa",
+  "amendoim",
+  "chia",
+  "linhaca",
+  "sardinha",
+  "salmao",
+  "atum",
+  "peixe",
+];
+
+const BAD_FAT_KEYWORDS = [
+  "frito",
+  "fritura",
+  "bacon",
+  "linguica",
+  "salsicha",
+  "salame",
+  "calabresa",
+  "presunto",
+  "margarina",
+  "creme de leite",
+  "chantilly",
+  "salgadinho",
+  "fast food",
+  "hamburguer",
+  "pizza",
+];
 
 function mealSlotLabel(slot) {
   return TELEGRAM_MEAL_SLOTS.find((item) => item.key === slot)?.label || "Outro";
@@ -531,6 +605,223 @@ function formatDateTimeBr(value) {
   });
 }
 
+function toNumberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function fmtNumberBr(value, digits = 0) {
+  const parsed = toNumberOrNull(value);
+  if (parsed === null) return "0";
+  return parsed.toLocaleString("pt-BR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: digits,
+  });
+}
+
+function estimateMacroTargetsByCalories(caloriesGoal) {
+  const calories = Math.max(1400, Number(caloriesGoal || 2200));
+  return {
+    calories,
+    protein_g: Math.round((calories * 0.3) / 4),
+    carbs_g: Math.round((calories * 0.4) / 4),
+    fat_g: Math.round((calories * 0.3) / 9),
+  };
+}
+
+function statusByTarget(consumed, target, mode = "max", options = {}) {
+  const safeConsumed = Math.max(0, Number(consumed || 0));
+  const safeTarget = Math.max(0, Number(target || 0));
+  if (!safeTarget) return "ok";
+
+  if (mode === "min") {
+    return safeConsumed < safeTarget ? "abaixo" : "ok";
+  }
+
+  if (mode === "range") {
+    const minRatio = Math.max(0, Number(options.minRatio ?? 0.85));
+    const maxRatio = Math.max(minRatio, Number(options.maxRatio ?? 1.2));
+    const ratio = safeConsumed / safeTarget;
+    if (ratio < minRatio) return "abaixo";
+    if (ratio > maxRatio) return "acima";
+    return "ok";
+  }
+
+  return safeConsumed > safeTarget ? "acima" : "ok";
+}
+
+function normalizeAiPayload(entry) {
+  const payload = entry?.ai_payload;
+  if (payload && typeof payload === "object") return payload;
+  try {
+    const parsed = JSON.parse(String(payload || "{}"));
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function extractFoodItems(entry) {
+  const payload = normalizeAiPayload(entry);
+  const foodItems = Array.isArray(payload.food_items) ? payload.food_items : [];
+  return foodItems
+    .map((item) => ({
+      food_name: String(item?.food_name || "item").trim(),
+      reason: String(item?.reason || "").trim(),
+      carbs_g: Math.max(0, Number(item?.carbs_g || 0)),
+      sodium_mg: Math.max(0, Number(item?.sodium_mg || 0)),
+      sugar_g: Math.max(0, Number(item?.sugar_g || 0)),
+      fat_g: Math.max(0, Number(item?.fat_g || 0)),
+      fat_good_g: toNumberOrNull(item?.fat_good_g),
+      fat_bad_g: toNumberOrNull(item?.fat_bad_g),
+    }))
+    .filter((item) => item.food_name);
+}
+
+function hasAnyKeyword(text, keywords) {
+  const normalized = normalizeMarkerName(text || "");
+  if (!normalized) return false;
+  return keywords.some((keyword) => normalized.includes(keyword));
+}
+
+function detectDietRiskSignals(entry) {
+  const foods = extractFoodItems(entry);
+  const joined = [
+    String(entry?.raw_input_text || ""),
+    String(entry?.analyzed_summary || ""),
+    ...foods.map((item) => `${item.food_name || ""} ${item.reason || ""}`),
+  ].join(" | ");
+
+  return {
+    sodium_alert: hasAnyKeyword(joined, SODIUM_ALERT_KEYWORDS),
+    sugar_alert: hasAnyKeyword(joined, SUGAR_ALERT_KEYWORDS),
+  };
+}
+
+function estimateEntrySugarG(entry) {
+  const payload = normalizeAiPayload(entry);
+  const payloadSugar = toNumberOrNull(payload?.sugar_g);
+  if (payloadSugar !== null) return Math.max(0, payloadSugar);
+
+  const foodItems = extractFoodItems(entry);
+  const byItems = foodItems.reduce((acc, item) => acc + Number(item.sugar_g || 0), 0);
+  if (byItems > 0) return byItems;
+
+  const carbs = Math.max(0, Number(entry?.estimated_carbs_g || 0));
+  const risk = detectDietRiskSignals(entry);
+  const ratio = risk.sugar_alert ? 0.45 : 0.18;
+  return Math.round(carbs * ratio * 10) / 10;
+}
+
+function estimateEntrySodiumMg(entry) {
+  const payload = normalizeAiPayload(entry);
+  const payloadSodium = toNumberOrNull(payload?.sodium_mg);
+  if (payloadSodium !== null) return Math.max(0, payloadSodium);
+
+  const foodItems = extractFoodItems(entry);
+  const byItems = foodItems.reduce((acc, item) => acc + Number(item.sodium_mg || 0), 0);
+  if (byItems > 0) return byItems;
+
+  const calories = Math.max(0, Number(entry?.estimated_calories || 0));
+  const risk = detectDietRiskSignals(entry);
+  const base = risk.sodium_alert ? calories * 3 : calories;
+  return Math.round(Math.max(risk.sodium_alert ? 250 : 80, base));
+}
+
+function estimateFatQualityRatiosFromText(text) {
+  const hasGood = hasAnyKeyword(text, GOOD_FAT_KEYWORDS);
+  const hasBad = hasAnyKeyword(text, BAD_FAT_KEYWORDS);
+  if (hasGood && !hasBad) return { goodRatio: 0.75, badRatio: 0.25 };
+  if (hasBad && !hasGood) return { goodRatio: 0.2, badRatio: 0.8 };
+  if (hasGood && hasBad) return { goodRatio: 0.45, badRatio: 0.55 };
+  return { goodRatio: 0.5, badRatio: 0.5 };
+}
+
+function estimateEntryFatQuality(entry) {
+  const payload = normalizeAiPayload(entry);
+  const payloadGood = toNumberOrNull(payload?.fat_good_g);
+  const payloadBad = toNumberOrNull(payload?.fat_bad_g);
+
+  if (payloadGood !== null || payloadBad !== null) {
+    const totalFat = Math.max(0, Number(entry?.estimated_fat_g || 0));
+    const good = Math.max(0, Number(payloadGood || 0));
+    const bad = Math.max(0, Number(payloadBad || 0));
+    if (good > 0 || bad > 0) return { fatGood: good, fatBad: bad };
+    const split = totalFat / 2;
+    return { fatGood: split, fatBad: split };
+  }
+
+  const foods = extractFoodItems(entry);
+  const foodGood = foods.reduce((acc, item) => acc + Number(item.fat_good_g || 0), 0);
+  const foodBad = foods.reduce((acc, item) => acc + Number(item.fat_bad_g || 0), 0);
+  if (foodGood > 0 || foodBad > 0) return { fatGood: foodGood, fatBad: foodBad };
+
+  const totalFat = Math.max(0, Number(entry?.estimated_fat_g || 0));
+  const contextText = [
+    String(entry?.raw_input_text || ""),
+    String(entry?.analyzed_summary || ""),
+    ...foods.map((item) => `${item.food_name} ${item.reason}`),
+  ].join(" | ");
+  const ratios = estimateFatQualityRatiosFromText(contextText);
+
+  return {
+    fatGood: Number((totalFat * ratios.goodRatio).toFixed(1)),
+    fatBad: Number((totalFat * ratios.badRatio).toFixed(1)),
+  };
+}
+
+function nutritionRiskLabel(status) {
+  return status === "acima" ? "acima" : "ok";
+}
+
+function buildNutritionSignals(entries, periodDays = 1) {
+  const riskBase = (entries || []).filter((entry) => {
+    const slot = resolveMealSlot(entry);
+    return TELEGRAM_MEAL_SLOTS_CORE.some((item) => item.key === slot);
+  });
+
+  let sodiumAlerts = 0;
+  let sugarAlerts = 0;
+  let sodiumConsumedMg = 0;
+  let sugarConsumedG = 0;
+  let totalFatGood = 0;
+  let totalFatBad = 0;
+
+  for (const entry of riskBase) {
+    const risk = detectDietRiskSignals(entry);
+    if (risk.sodium_alert) sodiumAlerts += 1;
+    if (risk.sugar_alert) sugarAlerts += 1;
+    sodiumConsumedMg += estimateEntrySodiumMg(entry);
+    sugarConsumedG += estimateEntrySugarG(entry);
+    const fatSplit = estimateEntryFatQuality(entry);
+    totalFatGood += Number(fatSplit.fatGood || 0);
+    totalFatBad += Number(fatSplit.fatBad || 0);
+  }
+
+  const count = riskBase.length;
+  const sodiumGoalMg = 2000 * Math.max(1, Number(periodDays || 1));
+  const sugarGoalG = 30 * Math.max(1, Number(periodDays || 1));
+  const sodiumStatus = statusByTarget(sodiumConsumedMg, sodiumGoalMg, "max");
+  const sugarStatus = statusByTarget(sugarConsumedG, sugarGoalG, "max");
+
+  return {
+    count,
+    sodiumAlerts,
+    sugarAlerts,
+    sodiumConsumedMg: Number(sodiumConsumedMg.toFixed(0)),
+    sugarConsumedG: Number(sugarConsumedG.toFixed(1)),
+    sodiumGoalMg,
+    sugarGoalG,
+    sodiumStatus,
+    sugarStatus,
+    sodiumFreqPct: count ? Number(((sodiumAlerts / count) * 100).toFixed(0)) : 0,
+    sugarFreqPct: count ? Number(((sugarAlerts / count) * 100).toFixed(0)) : 0,
+    totalFatGood: Number(totalFatGood.toFixed(1)),
+    totalFatBad: Number(totalFatBad.toFixed(1)),
+  };
+}
+
 function normalizeIntentText(value) {
   return String(value || "")
     .normalize("NFD")
@@ -543,12 +834,16 @@ function detectShortcutIntent(rawText) {
   const normalized = normalizeIntentText(rawText);
   if (!normalized) return null;
 
-  if (["/start", "/help", "help", "ajuda"].includes(normalized)) {
+  if (["/start", "/help", "help", "ajuda", "/menu", "menu"].includes(normalized)) {
     return "help";
   }
 
   if (["/resumo", "resumo", "resumo de hoje", "ver resumo"].includes(normalized)) {
     return "summary";
+  }
+
+  if (["/nutricao", "/nutri", "nutricao", "nutricao de hoje", "nutri", "resumo nutricional"].includes(normalized)) {
+    return "nutrition";
   }
 
   if (["/painel", "painel", "abrir painel", "abrir web"].includes(normalized)) {
@@ -563,7 +858,11 @@ function detectShortcutIntent(rawText) {
     return "body_status";
   }
 
-  if (["falar com ia", "conversar com ia", "modo chat", "chat"].includes(normalized)) {
+  if (["/rascunho", "rascunho", "rascunho atual", "ver rascunho"].includes(normalized)) {
+    return "draft_preview";
+  }
+
+  if (["conversar com ia", "modo chat", "chat"].includes(normalized)) {
     return "chat_help";
   }
 
@@ -581,6 +880,8 @@ function parseQuickChatButtonPrompt(rawText) {
       "Me sugira a proxima refeicao de forma simples, com porcoes e foco no meu objetivo.",
     "plano de hoje":
       "Monte um plano curto para o restante de hoje com base no meu status corporal e exames.",
+    "falar com ia":
+      "Converse comigo como nutricionista pessoal e me oriente com foco em praticidade hoje.",
   };
 
   return quickPrompts[normalized] || null;
@@ -764,6 +1065,101 @@ async function runChatMode({ appUser, text, chatId, replyToMessageId }) {
   await safeReply(chatId, reply, replyToMessageId);
 }
 
+async function buildTelegramNutritionSummary(userId) {
+  const today = todayDateInTimezone(cfg.appTimezone);
+  const from = `${today}T00:00:00-03:00`;
+  const to = `${today}T23:59:59-03:00`;
+  const periodDays = 1;
+
+  const [overview, nutrition, hydration, workouts] = await Promise.all([
+    getDashboardOverview(userId),
+    listNutritionEntries(userId, { from, to, limit: 240 }),
+    listHydrationLogs(userId, { from, to, limit: 300 }),
+    listWorkoutSessions(userId, { from, to, limit: 120 }),
+  ]);
+
+  const hydrationTotal = hydration.reduce((acc, item) => acc + Number(item.amount_ml || 0), 0);
+  const hydrationGoal = Number(overview?.today?.hydration_goal_ml || 3000);
+  const hydrationPct = hydrationGoal > 0 ? Number(((hydrationTotal / hydrationGoal) * 100).toFixed(1)) : 0;
+
+  const nutritionCaloriesTotal = nutrition.reduce((acc, item) => acc + Number(item.estimated_calories || 0), 0);
+  const caloriesGoal = Number(overview?.today?.nutrition_calories_goal_kcal || 2200);
+  const caloriesRemaining = Math.max(0, caloriesGoal - nutritionCaloriesTotal);
+  const caloriesStatus = statusByTarget(nutritionCaloriesTotal, caloriesGoal, "max");
+
+  const targets = estimateMacroTargetsByCalories(caloriesGoal);
+  const totalProtein = nutrition.reduce((acc, item) => acc + Number(item.estimated_protein_g || 0), 0);
+  const totalCarbs = nutrition.reduce((acc, item) => acc + Number(item.estimated_carbs_g || 0), 0);
+  const totalFat = nutrition.reduce((acc, item) => acc + Number(item.estimated_fat_g || 0), 0);
+  const proteinStatus = statusByTarget(totalProtein, targets.protein_g, "range", { minRatio: 0.85, maxRatio: 1.2 });
+  const carbsStatus = statusByTarget(totalCarbs, targets.carbs_g, "max");
+  const fatStatus = statusByTarget(totalFat, targets.fat_g, "max");
+
+  const signals = buildNutritionSignals(nutrition, periodDays);
+  const fatGoodTarget = Math.round(targets.fat_g * 0.6);
+  const fatBadTarget = Math.round(targets.fat_g * 0.4);
+  const fatGoodStatus = statusByTarget(signals.totalFatGood, fatGoodTarget, "min");
+  const fatBadStatus = statusByTarget(signals.totalFatBad, fatBadTarget, "max");
+
+  const grouped = Object.fromEntries(TELEGRAM_MEAL_SLOTS_CORE.map((slot) => [slot.key, { count: 0, kcal: 0, goal: 0 }]));
+  for (const slot of TELEGRAM_MEAL_SLOTS_CORE) {
+    grouped[slot.key].goal = Math.round((targets.calories * (TELEGRAM_MEAL_CALORIE_RATIO[slot.key] || 0)) * periodDays);
+  }
+  for (const entry of nutrition) {
+    const slot = resolveMealSlot(entry);
+    if (!grouped[slot]) continue;
+    grouped[slot].count += 1;
+    grouped[slot].kcal += Number(entry.estimated_calories || 0);
+  }
+
+  const workoutMinutes = workouts.reduce((acc, item) => acc + Number(item.duration_minutes || 0), 0);
+  const workoutCalories = workouts.reduce((acc, item) => acc + Number(item.calories_burned_est || 0), 0);
+
+  const lines = [
+    `EdeVida - Nutricao de hoje (${formatDateBr(today)})`,
+    "",
+    "CALORIAS",
+    `- Total: ${fmtNumberBr(nutritionCaloriesTotal, 0)} / ${fmtNumberBr(caloriesGoal, 0)} kcal (${nutritionRiskLabel(caloriesStatus)})`,
+    `- Restante na meta: ${fmtNumberBr(caloriesRemaining, 0)} kcal`,
+    "",
+    "MACROS (consumido / alvo)",
+    `- Proteina: ${fmtNumberBr(totalProtein, 1)} / ${fmtNumberBr(targets.protein_g, 0)} g (${proteinStatus})`,
+    `- Carboidrato: ${fmtNumberBr(totalCarbs, 1)} / ${fmtNumberBr(targets.carbs_g, 0)} g (${carbsStatus})`,
+    `- Gordura total: ${fmtNumberBr(totalFat, 1)} / ${fmtNumberBr(targets.fat_g, 0)} g (${fatStatus})`,
+    `- Gordura boa: ${fmtNumberBr(signals.totalFatGood, 1)} / ${fmtNumberBr(fatGoodTarget, 0)} g (${fatGoodStatus})`,
+    `- Gordura ruim: ${fmtNumberBr(signals.totalFatBad, 1)} / ${fmtNumberBr(fatBadTarget, 0)} g (${fatBadStatus})`,
+    "",
+    "SINAIS IA (estimados)",
+    `- Sodio: ${fmtNumberBr(signals.sodiumConsumedMg, 0)} mg (ideal ate ${fmtNumberBr(signals.sodiumGoalMg, 0)} mg) | ${nutritionRiskLabel(signals.sodiumStatus)}`,
+    `  Excesso: +${fmtNumberBr(Math.max(0, signals.sodiumConsumedMg - signals.sodiumGoalMg), 0)} mg | Frequencia: ${signals.sodiumAlerts} de ${signals.count} refeicao(oes) (${signals.sodiumFreqPct}%)`,
+    `- Acucar: ${fmtNumberBr(signals.sugarConsumedG, 1)} g (ideal ate ${fmtNumberBr(signals.sugarGoalG, 0)} g) | ${nutritionRiskLabel(signals.sugarStatus)}`,
+    `  Excesso: +${fmtNumberBr(Math.max(0, signals.sugarConsumedG - signals.sugarGoalG), 1)} g | Frequencia: ${signals.sugarAlerts} de ${signals.count} refeicao(oes) (${signals.sugarFreqPct}%)`,
+    "",
+    "REFEICOES POR GRUPO",
+    ...TELEGRAM_MEAL_SLOTS_CORE.map((slot) => {
+      const metric = grouped[slot.key] || { count: 0, kcal: 0, goal: 0 };
+      const slotStatus = statusByTarget(metric.kcal, metric.goal, "max");
+      return `- ${slot.label}: ${metric.count} registro(s), ${fmtNumberBr(metric.kcal, 0)} / ${fmtNumberBr(metric.goal, 0)} kcal (${slotStatus})`;
+    }),
+    "",
+    "HIDRATACAO E TREINO",
+    `- Agua: ${fmtNumberBr(hydrationTotal, 0)} / ${fmtNumberBr(hydrationGoal, 0)} ml (${fmtNumberBr(hydrationPct, 1)}%)`,
+    `- Treino: ${workouts.length} sessao(oes), ${fmtNumberBr(workoutMinutes, 0)} min, ${fmtNumberBr(workoutCalories, 0)} kcal estimadas`,
+    "",
+    `Painel web: ${cfg.appBaseUrl}/painel (aba Nutricao)`,
+  ];
+
+  if (!nutrition.length && !hydration.length && !workouts.length) {
+    lines.splice(
+      2,
+      0,
+      "Sem registros de nutricao/agua/treino hoje ainda. Envie refeicao por texto/foto/audio para iniciar."
+    );
+  }
+
+  return lines.join("\n");
+}
+
 async function buildTelegramDailySummary(userId) {
   const today = todayDateInTimezone(cfg.appTimezone);
   const from = `${today}T00:00:00-03:00`;
@@ -876,7 +1272,8 @@ async function buildTelegramDailySummary(userId) {
     }
   }
 
-  lines.push("", `Painel web: ${cfg.appBaseUrl}/painel`);
+  lines.push("", "Use /nutricao para ver o detalhado alimentar do dia.");
+  lines.push(`Painel web: ${cfg.appBaseUrl}/painel`);
 
   return lines.join("\n");
 }
@@ -979,11 +1376,13 @@ function getTelegramHelpText() {
     "/start ou /help - mostra este guia",
     "/painel - abre o painel web",
     "/resumo - mostra resumo completo de hoje",
+    "/nutricao - mostra painel nutricional de hoje (calorias, macros, sodio e acucar)",
     "/corpo - mostra visao geral do corpo (5 niveis)",
     "/exames - mostra acompanhamento dos exames",
+    "/rascunho - mostra o rascunho atual antes de registrar",
     "/chat <pergunta> - conversa sem registrar refeicao",
     "",
-    "Botoes diarios: Resumo de hoje, Status do corpo, Registrar refeicao, Sugestao proximo refeicao, Plano de hoje, Falar com IA, Painel e Help.",
+    "Botoes diarios: Resumo de hoje, Nutricao de hoje, Status do corpo, Exames, Sugestao proxima refeicao, Plano de hoje, Falar com IA, Rascunho atual, Registrar refeicao, Painel e Help.",
     "",
     "Dica: mensagens com '?' entram em modo conversa (sem registro).",
   ].join("\n");
@@ -1068,6 +1467,18 @@ const telegramWebhookController = asyncHandler(async (req, res) => {
       }
     }
 
+    if (shortcutIntent === "nutrition") {
+      try {
+        const nutritionSummary = await buildTelegramNutritionSummary(appUser.id);
+        await safeReply(message.chat.id, nutritionSummary, message.message_id);
+        return res.json({ ok: true, handled: "nutricao" });
+      } catch (err) {
+        const aiError = normalizeOpenAiError(err);
+        await safeReply(message.chat.id, aiError.userMessage, message.message_id);
+        return res.json({ ok: true, handled: "nutricao", analyzed: false, reason: aiError.code });
+      }
+    }
+
     if (shortcutIntent === "body_status") {
       try {
         const bodyStatus = await buildTelegramBodyStatus(appUser.id);
@@ -1092,12 +1503,32 @@ const telegramWebhookController = asyncHandler(async (req, res) => {
       }
     }
 
+    if (shortcutIntent === "draft_preview") {
+      const activeDraft = getNutritionDraft(appUser.id, message.chat.id);
+      if (!activeDraft) {
+        await safeReply(
+          message.chat.id,
+          "Sem rascunho ativo agora. Envie texto, foto ou audio para montar um rascunho antes de registrar.",
+          message.message_id
+        );
+        return res.json({ ok: true, handled: "draft_preview_empty" });
+      }
+
+      await safeReply(
+        message.chat.id,
+        formatDraftPreview(activeDraft),
+        message.message_id,
+        { reply_markup: buildTelegramDraftKeyboard() }
+      );
+      return res.json({ ok: true, handled: "draft_preview" });
+    }
+
     if (shortcutIntent === "chat_help") {
       await safeReply(
         message.chat.id,
         [
           "Modo conversa pronto.",
-          "Use os botoes Sugestao proximo refeicao e Plano de hoje ou envie /chat com sua pergunta.",
+          "Use os botoes Sugestao proxima refeicao e Plano de hoje ou envie /chat com sua pergunta.",
           "Exemplo: /chat Estou com fome agora, o que comer?",
         ].join("\n"),
         message.message_id

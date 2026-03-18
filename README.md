@@ -19,6 +19,16 @@ npm install
 npm run dev
 ```
 
+## Reset de dados de teste (antes de novo ciclo)
+
+```bash
+cd apps/api
+npm run reset:test-data:dry
+npm run reset:test-data
+```
+
+Guia tecnico completo: `doc-ia/guia-tecnico-edevida.md`.
+
 Health check:
 
 ```bash
@@ -80,6 +90,12 @@ curl http://127.0.0.1:3000/painel
    - Envie texto de refeicao, foto do prato ou audio
    - Comandos disponiveis:
      - `/start` ou `/help`
+     - `/resumo`
+     - `/nutricao`
+     - `/corpo`
+     - `/exames`
+     - `/rascunho`
+     - `/chat <pergunta>`
      - `/painel`
 
 3. Anexos salvos:

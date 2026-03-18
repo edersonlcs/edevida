@@ -464,6 +464,92 @@ body {
   border-color: rgba(19, 39, 43, 0.18);
 }
 
+.food-subsection {
+  border-color: rgba(47, 143, 131, 0.3);
+  background: linear-gradient(180deg, rgba(238, 251, 248, 0.76), rgba(255, 255, 255, 0.86));
+}
+
+.food-flow-hint {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.food-grid {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+}
+
+.food-card {
+  border: 1px solid rgba(19, 39, 43, 0.16);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 10px 20px rgba(19, 39, 43, 0.08);
+}
+
+.food-card h3 {
+  margin-bottom: 0.55rem;
+}
+
+.chat-thread {
+  margin-top: 0.5rem;
+  border: 1px dashed rgba(19, 39, 43, 0.2);
+  border-radius: 10px;
+  background: rgba(247, 251, 251, 0.85);
+  padding: 0.6rem;
+  max-height: 240px;
+  overflow: auto;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.chat-bubble {
+  border-radius: 10px;
+  padding: 0.5rem 0.6rem;
+  display: grid;
+  gap: 0.2rem;
+  border: 1px solid rgba(19, 39, 43, 0.12);
+}
+
+.chat-bubble p {
+  margin: 0;
+}
+
+.chat-role {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.chat-user {
+  background: rgba(211, 95, 47, 0.12);
+  border-color: rgba(211, 95, 47, 0.22);
+}
+
+.chat-assistant {
+  background: rgba(47, 143, 131, 0.12);
+  border-color: rgba(47, 143, 131, 0.24);
+}
+
+.food-card-text {
+  border-left: 4px solid rgba(47, 143, 131, 0.6);
+}
+
+.food-card-photo {
+  border-left: 4px solid rgba(38, 124, 183, 0.58);
+}
+
+.food-card-audio {
+  border-left: 4px solid rgba(211, 95, 47, 0.58);
+}
+
+.food-card-draft {
+  grid-column: 1 / -1;
+  border-left: 4px solid rgba(39, 129, 97, 0.62);
+}
+
 .history-grid {
   display: grid;
   gap: 0.8rem;
@@ -1036,6 +1122,10 @@ textarea {
   .comparison-grid {
     grid-template-columns: 1fr;
   }
+
+  .food-grid {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 @media (max-width: 700px) {
@@ -1058,6 +1148,10 @@ textarea {
   }
 
   .meal-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .food-grid {
     grid-template-columns: 1fr;
   }
 

@@ -605,6 +605,22 @@ Entregue:
   - criada aba `Cadastro` para separar dados base e evolucao corporal (perfil, foto com medidas e medidas manuais)
   - removidos os formularios manuais de `Exame medico` e `Bioimpedancia` (fluxo oficial via aba `Anexos`)
   - no formulario `Analisar alimentacao (foto)`: opcao de `tirar foto agora` ou `escolher da galeria`
+  - ordem das abas ajustada para: `Dashboard`, `Nutricao`, `Registros`, `Anexos`, `Exames`, `Historico`, `Cadastro`, `Telegram`, `IA`
+  - bloco `1) Registro dos alimentos` com layout visual reforcado (fluxo por passos e destaque de cards de texto/foto/voz/rascunho)
+  - aba `Exames` passa a considerar o historico clinico completo (nao fica limitada ao filtro diario)
+  - em `Registro dos alimentos`, cards de analise em uma linha na ordem: `texto`, `foto`, `voz`
+  - resultado centralizado apenas no card `Rascunho de refeicao` (sem saida duplicada nos cards de entrada)
+  - `Rascunho de refeicao` com campo `data/hora do registro` para lancamento retroativo (ex.: refeicao de ontem)
+  - no card de `texto`, modo padrao em `somente conversar` com experiencia de chat no proprio card
+  - aba `Anexos`: novo bloco final com historico simples dos anexos enviados
+  - aba `Exames`: novo grafico de comparacao de marcadores para acompanhar melhora/piora ao longo dos exames
+  - aba `Cadastro`: perfil base sempre preenchido com valores atuais para edicao, mais historico rapido de `foto + medidas` e `medidas manuais`
+  - historicos de `Cadastro` e `Anexos` passam a usar base completa (independente do filtro de data do painel)
+  - Telegram alinhado ao web com menu diario simplificado e completo: `Resumo de hoje`, `Nutricao de hoje`, `Status do corpo`, `Exames`, `Sugestao proxima refeicao`, `Plano de hoje`, `Falar com IA`, `Rascunho atual`, `Registrar refeicao`, `Painel` e `Help`
+  - novo comando `/nutricao` no Telegram para resumo nutricional detalhado (calorias, macros, gordura boa/ruim, sodio e acucar)
+  - novo comando `/rascunho` no Telegram para revisar rapidamente o rascunho antes de registrar
+  - script de reset para novo ciclo de testes: `npm run reset:test-data` (limpa dados do Supabase + arquivos em `temp/`)
+  - documentacao tecnica de manutencao criada em `doc-ia/guia-tecnico-edevida.md`
 
 ### Atividade 12 - Deploy VPS
 
