@@ -600,6 +600,11 @@ Entregue:
   - filtro de data com navegacao rapida por setas (`< dia anterior` e `proximo dia >`) sem digitar
   - resumo do filtro exibindo dia da semana (ex.: `Dia aplicado: Terça-feira, 17/03/2026`)
   - em cada alimento no detalhado: linha `Alternativas melhores: ...` para troca imediata de opcao
+  - aba `Registros` reorganizada por blocos: `Cadastro base`, `Lancamentos do dia a dia` e orientacao para consulta na aba `Historico`
+  - em `Registros`, `Registro dos alimentos` fica sempre em primeiro, com destaque visual antes de `Outros lancamentos`
+  - criada aba `Cadastro` para separar dados base e evolucao corporal (perfil, foto com medidas e medidas manuais)
+  - removidos os formularios manuais de `Exame medico` e `Bioimpedancia` (fluxo oficial via aba `Anexos`)
+  - no formulario `Analisar alimentacao (foto)`: opcao de `tirar foto agora` ou `escolher da galeria`
 
 ### Atividade 12 - Deploy VPS
 

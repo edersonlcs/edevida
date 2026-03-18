@@ -385,6 +385,85 @@ body {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.registros-overview {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.registros-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.registros-section {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.registros-section-header {
+  display: grid;
+  gap: 0.22rem;
+  padding-bottom: 0.45rem;
+  border-bottom: 1px dashed rgba(19, 39, 43, 0.22);
+}
+
+.registros-section-header h3 {
+  margin: 0;
+}
+
+.registros-section-header p {
+  margin: 0;
+}
+
+.registros-grid > .card {
+  border-style: solid;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.registros-subsection {
+  display: grid;
+  gap: 0.7rem;
+  border: 1px solid rgba(19, 39, 43, 0.14);
+  border-radius: 14px;
+  padding: 0.8rem;
+  background: rgba(250, 253, 253, 0.78);
+}
+
+.registros-subsection + .registros-subsection {
+  margin-top: 0.15rem;
+}
+
+.registros-subsection-header {
+  display: grid;
+  gap: 0.22rem;
+  border-bottom: 1px dashed rgba(19, 39, 43, 0.2);
+  padding-bottom: 0.45rem;
+}
+
+.registros-subsection-header h4 {
+  margin: 0;
+  font-size: 1rem;
+  font-family: "Space Grotesk", sans-serif;
+}
+
+.registros-subsection-header p {
+  margin: 0;
+}
+
+.registros-subsection:first-of-type {
+  border-color: rgba(47, 143, 131, 0.28);
+  background: linear-gradient(180deg, rgba(236, 249, 246, 0.72), rgba(255, 255, 255, 0.8));
+}
+
+.registros-subsection:first-of-type .registros-subsection-header h4 {
+  color: #17685e;
+}
+
+.registros-subsection:last-of-type {
+  border-color: rgba(19, 39, 43, 0.18);
+}
+
 .history-grid {
   display: grid;
   gap: 0.8rem;
@@ -758,6 +837,27 @@ h3 {
   gap: 0.55rem;
 }
 
+.photo-input-grid {
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.photo-input-option {
+  display: grid;
+  gap: 0.32rem;
+  padding: 0.58rem;
+  border: 1px dashed rgba(19, 39, 43, 0.22);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.photo-input-option span {
+  font-size: 0.84rem;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
 .two-cols {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -945,6 +1045,10 @@ textarea {
   }
 
   .two-cols {
+    grid-template-columns: 1fr;
+  }
+
+  .photo-input-grid {
     grid-template-columns: 1fr;
   }
 

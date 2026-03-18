@@ -3058,6 +3058,17 @@ function setupForms() {
       setStatus("Enviando foto para analise nutricional...", "info");
 
       const formData = new FormData(nutritionImageForm);
+      const cameraFile = nutritionImageForm.querySelector("input[name='file_camera']")?.files?.[0] || null;
+      const galleryFile = nutritionImageForm.querySelector("input[name='file_gallery']")?.files?.[0] || null;
+      const selectedFile = cameraFile || galleryFile;
+
+      if (!selectedFile) {
+        throw new Error("Selecione uma imagem pela câmera ou galeria antes de analisar.");
+      }
+
+      formData.delete("file_camera");
+      formData.delete("file_gallery");
+      formData.set("file", selectedFile);
       formData.set("user_id", userId);
       formData.set("persist", "false");
       const result = await apiFormData("/api/nutrition/analyze-image", formData);
@@ -3254,45 +3265,6 @@ function setupForms() {
       writeOutput("measurement-photo-result", `Erro: ${err.message}`);
       setStatus(`Erro no upload da foto de evolução: ${err.message}`, "error");
     }
-  });
-
-  bindForm("bioimpedance-form", async (payload, form) => {
-    const userId = await ensureUser();
-
-    await apiJson("/api/bioimpedance", {
-      method: "POST",
-      body: JSON.stringify({ user_id: userId, ...payload }),
-    });
-
-    form.reset();
-    await refreshAllWithStatus("Bioimpedância salva.");
-  });
-
-  bindForm("exam-form", async (payload, form) => {
-    const userId = await ensureUser();
-    let markers = {};
-
-    if (payload.markers) {
-      try {
-        markers = JSON.parse(payload.markers);
-      } catch {
-        throw new Error("Marcadores do exame devem estar em JSON válido");
-      }
-    }
-
-    await apiJson("/api/medical-exams", {
-      method: "POST",
-      body: JSON.stringify({
-        user_id: userId,
-        exam_name: payload.exam_name,
-        exam_type: payload.exam_type,
-        exam_date: payload.exam_date,
-        markers,
-      }),
-    });
-
-    form.reset();
-    await refreshAllWithStatus("Exame médico salvo.");
   });
 
   bindForm("workout-form", async (payload, form) => {
