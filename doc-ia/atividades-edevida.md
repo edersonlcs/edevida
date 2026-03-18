@@ -247,6 +247,26 @@ Melhorias aplicadas apos uso real no web/telegram:
   - capacidades da IA,
   - modelos em uso,
   - preview e prompt completo da persona ativa.
+- nutricao com visual mais compacto:
+  - removido bloco separado de `calorias por grupo`,
+  - calorias `consumido / meta` agora ficam no proprio card de cada refeicao.
+- padronizacao de status de qualidade para linguagem mais clara:
+  - `otimo`, `bom`, `cuidado`, `ruim`, `critico` (mantendo compatibilidade com classificacoes antigas).
+- bloco de macros revisado:
+  - indicador simples `ok` (verde) e `acima` (vermelho),
+  - adicao de sinais IA para `sodio` e `acucar` por refeicoes do periodo,
+  - exibicao em formato `consumido x ideal` com percentual para reduzir ambiguidade.
+- formato clinico dos cards de risco nutricional:
+  - `Acucar: X g (ideal ate Y g)`,
+  - `Excesso: +Z g`,
+  - `Frequencia: N de M refeicoes`.
+- detalhado de alimentacao com mais contexto por refeicao:
+  - linha de macros (`kcal`, `P`, `C`, `G`) por registro,
+  - sinais IA de `sodio` e `acucar` para identificar melhor o que pode estar prejudicando,
+  - detalhamento por alimento com macros e estimativa de `sodio/acucar`.
+- card de agua aprimorado:
+  - mostra `consumido / ideal` no periodo filtrado,
+  - mostra sugestao de distribuicao diaria em tomadas (8-10 ao dia).
 - chat da IA mais conversacional e contextualizado com historico clinico (menos resposta engessada);
 - protecao para nao registrar hidratacao automatica fora de faixa por mensagem (anti-hallucination).
 
@@ -570,6 +590,16 @@ Entregue:
   - exame medico
   - treino
 - visao de dashboard + ultimos relatorios
+- melhorias de nutricao (18/03/2026):
+  - cards de macros com status `ok/abaixo/acima` para proteina, carboidrato e gordura
+  - novos cards de `gordura boa (estimada)` e `gordura ruim (estimada)`
+  - nos cards de risco (`sodio` e `acucar`), exibicao de principais alimentos contribuintes
+  - no detalhado por alimento: macros coloridas + gordura boa/ruim + destaque de impacto quando o alimento puxa excesso do periodo
+  - no resumo da refeicao: `P/C/G` com cor e linha separada de `gordura boa` vs `gordura ruim`
+  - schema da IA atualizado para aceitar `fat_good_g` e `fat_bad_g` (total e por item), melhorando a precisao para seu caso clinico
+  - filtro de data com navegacao rapida por setas (`< dia anterior` e `proximo dia >`) sem digitar
+  - resumo do filtro exibindo dia da semana (ex.: `Dia aplicado: Terça-feira, 17/03/2026`)
+  - em cada alimento no detalhado: linha `Alternativas melhores: ...` para troca imediata de opcao
 
 ### Atividade 12 - Deploy VPS
 

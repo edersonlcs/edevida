@@ -92,6 +92,26 @@ const QUALITY_RANK = {
   "nunca coma": 1,
 };
 
+function normalizeQualityToken(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function qualityLabel(value) {
+  const normalized = normalizeQualityToken(value);
+  if (normalized === "ainda pode, mas pouco" || normalized === "moderado" || normalized === "cuidado") {
+    return "cuidado";
+  }
+  if (normalized === "nunca coma" || normalized === "critico") return "critico";
+  if (normalized === "otimo") return "otimo";
+  if (normalized === "bom") return "bom";
+  if (normalized === "ruim") return "ruim";
+  return "sem registro";
+}
+
 const DRAFT_SLOT_OPTIONS = [
   { slot: "cafe_da_manha", label: "Cafe da manha", aliases: ["cafe da manha", "cafe", "cafe da manhã"] },
   { slot: "lanche_da_manha", label: "Lanche da manha", aliases: ["lanche da manha", "lanche manha"] },
@@ -132,7 +152,9 @@ function clearNutritionDraft(appUserId, chatId) {
 }
 
 function rankQuality(value) {
-  const normalized = String(value || "").toLowerCase();
+  const normalized = normalizeQualityToken(value);
+  if (normalized === "cuidado" || normalized === "moderado") return QUALITY_RANK["ainda pode, mas pouco"];
+  if (normalized === "critico") return QUALITY_RANK["nunca coma"];
   return QUALITY_RANK[normalized] || 0;
 }
 
@@ -309,7 +331,7 @@ function formatDraftPreview(draft) {
     "RASCUNHO DA REFEICAO (nao registrado)",
     "",
     `Refeicao: ${mealLabel}`,
-    `Classificacao geral: ${analysis.quality || "-"}`,
+    `Classificacao geral: ${qualityLabel(analysis.quality)}`,
     `Resumo geral: ${analysis.summary || "-"}`,
     `Agua detectada: ${Number(analysis.water_intake_ml || 0)} ml | Meta sugerida: ${Number(analysis.water_recommended_ml || 0)} ml`,
     `Macros estimadas: ${Number(analysis.estimated_calories || 0)} kcal | P ${Number(analysis.protein_g || 0)}g | C ${Number(analysis.carbs_g || 0)}g | G ${Number(analysis.fat_g || 0)}g`,
@@ -321,7 +343,7 @@ function formatDraftPreview(draft) {
     lines.push("- Sem itens detalhados ainda.");
   } else {
     for (const item of topItems) {
-      lines.push(`- ${item.food_name || "Item"} | ${item.portion || "porcao nao informada"} | ${item.quality || "-"}`);
+      lines.push(`- ${item.food_name || "Item"} | ${item.portion || "porcao nao informada"} | ${qualityLabel(item.quality)}`);
       if (item.reason) lines.push(`  motivo: ${item.reason}`);
     }
   }
@@ -665,7 +687,7 @@ function buildMealSlotSummary(entries) {
       const slotEntries = grouped[slot.key] || [];
       const latestQuality = slotEntries[0]?.meal_quality;
       const slotCalories = slotEntries.reduce((acc, entry) => acc + Number(entry.estimated_calories || 0), 0);
-      return `- ${slot.label}: ${slotEntries.length} registro(s), ${Math.round(slotCalories)} kcal${latestQuality ? ` (${latestQuality})` : ""}`;
+      return `- ${slot.label}: ${slotEntries.length} registro(s), ${Math.round(slotCalories)} kcal${latestQuality ? ` (${qualityLabel(latestQuality)})` : ""}`;
     })
     .join("\n");
 }
@@ -685,7 +707,7 @@ function buildQualitySummary(entries) {
     }
   }
 
-  return `ótimo ${counters.otimo} | bom ${counters.bom} | moderado ${counters["ainda pode, mas pouco"]} | ruim ${counters.ruim} | nunca ${counters["nunca coma"]}`;
+  return `otimo ${counters.otimo} | bom ${counters.bom} | cuidado ${counters["ainda pode, mas pouco"]} | ruim ${counters.ruim} | critico ${counters["nunca coma"]}`;
 }
 
 function clinicalLevelTag(level) {
@@ -839,7 +861,7 @@ async function buildTelegramDailySummary(userId) {
 
     const fallbackLines = [];
     if (lastNutrition[0]) {
-      fallbackLines.push(`- Última refeição: ${formatDateTimeBr(lastNutrition[0].recorded_at)} (${lastNutrition[0].meal_quality || "sem qualidade"})`);
+      fallbackLines.push(`- Última refeição: ${formatDateTimeBr(lastNutrition[0].recorded_at)} (${qualityLabel(lastNutrition[0].meal_quality)})`);
     }
     if (lastHydration[0]) {
       fallbackLines.push(`- Última água: ${formatDateTimeBr(lastHydration[0].recorded_at)} (${lastHydration[0].amount_ml || 0} ml)`);

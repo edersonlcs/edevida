@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/web/styles.css?v=20260318c" />
+    <link rel="stylesheet" href="/web/styles.css?v=20260318j" />
   </head>
   <body>
     <div class="bg-layer"></div>
@@ -43,6 +43,8 @@
       <section class="card filters-card">
         <h3>Filtro por data</h3>
         <form id="date-filter-form" class="filters-row">
+          <button class="btn-ghost filter-nav-btn" type="button" id="filter-prev-day" aria-label="Dia anterior" title="Dia anterior">◀</button>
+
           <label class="filter-field">
             <span>De</span>
             <input id="filter-from" name="from" type="date" />
@@ -52,6 +54,8 @@
             <span>Até</span>
             <input id="filter-to" name="to" type="date" />
           </label>
+
+          <button class="btn-ghost filter-nav-btn" type="button" id="filter-next-day" aria-label="Próximo dia" title="Próximo dia">▶</button>
 
           <button class="btn-secondary" type="submit">Aplicar filtro</button>
           <button class="btn-ghost" type="button" id="clear-date-filter">Hoje</button>
@@ -178,11 +182,12 @@
           <div id="nutrition-slot-cards" class="meal-grid"></div>
         </article>
 
-        <section class="metrics">
+        <section class="metrics nutrition-metrics">
           <article class="metric card">
             <h2>Água no período</h2>
             <p id="nutrition-water-total" class="metric-value">-</p>
-            <p class="metric-sub">somatório do filtro</p>
+            <p id="nutrition-water-sub" class="metric-sub">consumido / ideal</p>
+            <p id="nutrition-water-distribution" class="metric-sub">distribuição sugerida</p>
           </article>
 
           <article class="metric card">
@@ -206,12 +211,7 @@
         </section>
 
         <article class="card">
-          <h3>Calorias por grupo de refeição</h3>
-          <div id="nutrition-calories-by-slot" class="history-list"></div>
-        </article>
-
-        <article class="card">
-          <h3>Macros consumidos x alvo diário</h3>
+          <h3>Macros e sinais de risco (dia)</h3>
           <div id="nutrition-macros-overview" class="macro-grid"></div>
         </article>
 
@@ -540,6 +540,6 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-    <script src="/web/app.js?v=20260318c" type="module"></script>
+    <script src="/web/app.js?v=20260318j" type="module"></script>
   </body>
 </html>

@@ -78,7 +78,7 @@ function buildActionHints({ hydrationTotalMl, workoutCount, badMeals }) {
   }
 
   if (badMeals > 0) {
-    hints.push("Reduzir itens classificados como ruim/nunca coma no proximo periodo.");
+    hints.push("Reduzir itens classificados como ruim/critico no proximo periodo.");
   }
 
   if (workoutCount === 0) {

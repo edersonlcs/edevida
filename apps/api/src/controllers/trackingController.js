@@ -168,6 +168,14 @@ function normalizeDraftAnalysis(input) {
           portion: String(item?.portion || "porcao nao informada").slice(0, 180),
           quality: String(item?.quality || "bom").toLowerCase().trim(),
           reason: String(item?.reason || "sem observacao").slice(0, 500),
+          estimated_calories: toNumberOrNull(item?.estimated_calories),
+          protein_g: toNumberOrNull(item?.protein_g),
+          carbs_g: toNumberOrNull(item?.carbs_g),
+          fat_g: toNumberOrNull(item?.fat_g),
+          fat_good_g: toNumberOrNull(item?.fat_good_g),
+          fat_bad_g: toNumberOrNull(item?.fat_bad_g),
+          sodium_mg: toNumberOrNull(item?.sodium_mg),
+          sugar_g: toNumberOrNull(item?.sugar_g),
         }))
         .slice(0, 30)
     : [];
@@ -186,6 +194,10 @@ function normalizeDraftAnalysis(input) {
     protein_g: toNumberOrNull(base.protein_g),
     carbs_g: toNumberOrNull(base.carbs_g),
     fat_g: toNumberOrNull(base.fat_g),
+    fat_good_g: toNumberOrNull(base.fat_good_g),
+    fat_bad_g: toNumberOrNull(base.fat_bad_g),
+    sodium_mg: toNumberOrNull(base.sodium_mg),
+    sugar_g: toNumberOrNull(base.sugar_g),
     food_items: foodItems,
   };
 }

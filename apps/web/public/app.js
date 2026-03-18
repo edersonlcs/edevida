@@ -165,6 +165,60 @@ function todayInputValue() {
   return `${year}-${month}-${day}`;
 }
 
+function dateToInputValue(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function shiftDateInputValue(value, days = 0) {
+  const parsed = parseDateForDisplay(value);
+  if (!parsed) return todayInputValue();
+  const shifted = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+  shifted.setDate(shifted.getDate() + Number(days || 0));
+  return dateToInputValue(shifted);
+}
+
+function normalizeFilterRange(fromValue, toValue, fallbackDate = todayInputValue()) {
+  const fallback = String(fallbackDate || todayInputValue()).trim();
+  const rawFrom = String(fromValue || "").trim();
+  const rawTo = String(toValue || "").trim();
+
+  let from = rawFrom;
+  let to = rawTo;
+
+  if (!from && !to) {
+    from = fallback;
+    to = fallback;
+  } else if (!from && to) {
+    from = to;
+  } else if (from && !to) {
+    to = from;
+  }
+
+  if (from > to) {
+    const temp = from;
+    from = to;
+    to = temp;
+  }
+
+  return { from, to };
+}
+
+function weekdayDateLabel(value) {
+  const parsed = parseDateForDisplay(value);
+  if (!parsed) return fmtDate(value);
+
+  const label = parsed.toLocaleDateString("pt-BR", {
+    weekday: "long",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+  return `${label.slice(0, 1).toUpperCase()}${label.slice(1)}`;
+}
+
 function compactObject(source) {
   const output = {};
   for (const [key, value] of Object.entries(source || {})) {
@@ -203,13 +257,41 @@ function emptyState(message) {
   return `<p class=\"empty\">${escapeHtml(message)}</p>`;
 }
 
+function normalizeQualityToken(value) {
+  const normalized = String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+  if (normalized === "ainda pode, mas pouco" || normalized === "moderado" || normalized === "cuidado") {
+    return "cuidado";
+  }
+  if (normalized === "nunca coma" || normalized === "critico") return "critico";
+  if (normalized === "otimo") return "otimo";
+  if (normalized === "bom") return "bom";
+  if (normalized === "ruim") return "ruim";
+  if (normalized === "sem registro" || normalized === "sem qualidade" || normalized === "sem dado") return "sem registro";
+  return normalized || "sem registro";
+}
+
+function qualityLabel(value) {
+  const normalized = normalizeQualityToken(value);
+  if (normalized === "otimo") return "otimo";
+  if (normalized === "bom") return "bom";
+  if (normalized === "cuidado") return "cuidado";
+  if (normalized === "ruim") return "ruim";
+  if (normalized === "critico") return "critico";
+  return "sem registro";
+}
+
 function qualityClass(value) {
-  const normalized = String(value || "").toLowerCase();
+  const normalized = normalizeQualityToken(value);
   if (normalized === "otimo") return "quality-otimo";
   if (normalized === "bom") return "quality-bom";
-  if (normalized === "ainda pode, mas pouco") return "quality-moderado";
+  if (normalized === "cuidado") return "quality-moderado";
   if (normalized === "ruim") return "quality-ruim";
-  if (normalized === "nunca coma") return "quality-nunca";
+  if (normalized === "critico") return "quality-nunca";
   return "quality-default";
 }
 
@@ -317,8 +399,14 @@ function updateFilterSummary() {
     return;
   }
 
-  const fromLabel = state.filter.from ? fmtDate(state.filter.from) : "início";
-  const toLabel = state.filter.to ? fmtDate(state.filter.to) : "hoje";
+  const fromLabel = state.filter.from ? weekdayDateLabel(state.filter.from) : "início";
+  const toLabel = state.filter.to ? weekdayDateLabel(state.filter.to) : "hoje";
+
+  if (state.filter.from && state.filter.to && state.filter.from === state.filter.to) {
+    node.textContent = `Dia aplicado: ${fromLabel}`;
+    return;
+  }
+
   node.textContent = `Período aplicado: ${fromLabel} até ${toLabel}`;
 }
 
@@ -472,7 +560,7 @@ function renderMetricCards() {
     }
 
     const quality = latestFilteredNutrition?.meal_quality || "sem registro";
-    qualityNode.textContent = quality;
+    qualityNode.textContent = qualityLabel(quality);
     qualityNode.className = `metric-sub tag ${qualityClass(quality)}`;
 
     workoutsNode.textContent = String(filteredWorkoutCount);
@@ -493,7 +581,7 @@ function renderMetricCards() {
     }
 
     const quality = overview.today.latest_nutrition?.meal_quality || "sem registro";
-    qualityNode.textContent = quality;
+    qualityNode.textContent = qualityLabel(quality);
     qualityNode.className = `metric-sub tag ${qualityClass(quality)}`;
 
     workoutsNode.textContent = String(overview.week.workout_sessions || 0);
@@ -680,6 +768,14 @@ function extractFoodItems(entry) {
         portion: item.portion || "porção não informada",
         quality: item.quality || entry.meal_quality || "bom",
         reason: item.reason || "sem observação",
+        estimated_calories: toNumberOrNull(item.estimated_calories),
+        protein_g: toNumberOrNull(item.protein_g),
+        carbs_g: toNumberOrNull(item.carbs_g),
+        fat_g: toNumberOrNull(item.fat_g),
+        fat_good_g: toNumberOrNull(item.fat_good_g),
+        fat_bad_g: toNumberOrNull(item.fat_bad_g),
+        sodium_mg: toNumberOrNull(item.sodium_mg),
+        sugar_g: toNumberOrNull(item.sugar_g),
       }))
       .slice(0, 8);
   }
@@ -698,6 +794,14 @@ function extractFoodItems(entry) {
         portion: "não estimada",
         quality: entry.meal_quality || "bom",
         reason: "Item inferido do texto informado (sem análise granular da IA).",
+        estimated_calories: null,
+        protein_g: null,
+        carbs_g: null,
+        fat_g: null,
+        fat_good_g: null,
+        fat_bad_g: null,
+        sodium_mg: null,
+        sugar_g: null,
       }));
 
     if (inferredItems.length) return inferredItems;
@@ -710,11 +814,328 @@ function extractFoodItems(entry) {
         portion: "geral",
         quality: entry.meal_quality || "bom",
         reason: entry.analyzed_summary,
+        estimated_calories: null,
+        protein_g: null,
+        carbs_g: null,
+        fat_g: null,
+        fat_good_g: null,
+        fat_bad_g: null,
+        sodium_mg: null,
+        sugar_g: null,
       },
     ];
   }
 
   return [];
+}
+
+const SODIUM_ALERT_KEYWORDS = [
+  "sodio",
+  "sal",
+  "linguica",
+  "salsicha",
+  "bacon",
+  "presunto",
+  "salame",
+  "calabresa",
+  "embutido",
+  "ultraprocess",
+  "enlatado",
+  "instantaneo",
+];
+
+const SUGAR_ALERT_KEYWORDS = [
+  "acucar",
+  "doce",
+  "chocolate",
+  "refrigerante",
+  "sobremesa",
+  "biscoito recheado",
+  "sorvete",
+  "suco industrial",
+  "balas",
+  "brigadeiro",
+  "achocolatado",
+];
+
+const GOOD_FAT_KEYWORDS = [
+  "azeite",
+  "oliva",
+  "abacate",
+  "castanha",
+  "nozes",
+  "amendoa",
+  "amendoim",
+  "chia",
+  "linhaca",
+  "sardinha",
+  "salmao",
+  "atum",
+  "peixe",
+];
+
+const BAD_FAT_KEYWORDS = [
+  "frito",
+  "fritura",
+  "bacon",
+  "linguica",
+  "salsicha",
+  "salame",
+  "calabresa",
+  "presunto",
+  "margarina",
+  "creme de leite",
+  "chantilly",
+  "salgadinho",
+  "fast food",
+  "hamburguer",
+  "pizza",
+];
+
+function buildFoodKey(value) {
+  return normalizeMarkerName(value || "").replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function estimateFatQualityRatios(food) {
+  const baseText = `${food?.food_name || ""} ${food?.reason || ""}`;
+  const hasGoodFat = hasAnyKeyword(baseText, GOOD_FAT_KEYWORDS);
+  const hasBadFat = hasAnyKeyword(baseText, BAD_FAT_KEYWORDS);
+
+  if (hasGoodFat && !hasBadFat) return { goodRatio: 0.75, badRatio: 0.25 };
+  if (hasBadFat && !hasGoodFat) return { goodRatio: 0.2, badRatio: 0.8 };
+  if (hasBadFat && hasGoodFat) return { goodRatio: 0.45, badRatio: 0.55 };
+  return { goodRatio: 0.5, badRatio: 0.5 };
+}
+
+function estimateFoodFatSplit(food, totalFatValue) {
+  const totalFat = Math.max(0, Number(totalFatValue || 0));
+  if (!totalFat) return { fat_good_g: 0, fat_bad_g: 0 };
+
+  const explicitGood = toNumberOrNull(food?.fat_good_g);
+  const explicitBad = toNumberOrNull(food?.fat_bad_g);
+
+  if (explicitGood !== null && explicitBad !== null) {
+    const normalizedGood = Math.max(0, explicitGood);
+    const normalizedBad = Math.max(0, explicitBad);
+    const totalExplicit = normalizedGood + normalizedBad;
+    if (!totalExplicit) return { fat_good_g: 0, fat_bad_g: 0 };
+    const factor = totalFat / totalExplicit;
+    return {
+      fat_good_g: Number((normalizedGood * factor).toFixed(1)),
+      fat_bad_g: Number((normalizedBad * factor).toFixed(1)),
+    };
+  }
+
+  if (explicitGood !== null) {
+    const fatGood = Math.min(totalFat, Math.max(0, explicitGood));
+    return {
+      fat_good_g: Number(fatGood.toFixed(1)),
+      fat_bad_g: Number((totalFat - fatGood).toFixed(1)),
+    };
+  }
+
+  if (explicitBad !== null) {
+    const fatBad = Math.min(totalFat, Math.max(0, explicitBad));
+    return {
+      fat_good_g: Number((totalFat - fatBad).toFixed(1)),
+      fat_bad_g: Number(fatBad.toFixed(1)),
+    };
+  }
+
+  const ratios = estimateFatQualityRatios(food);
+  return {
+    fat_good_g: Number((totalFat * ratios.goodRatio).toFixed(1)),
+    fat_bad_g: Number((totalFat * ratios.badRatio).toFixed(1)),
+  };
+}
+
+function buildPeriodFoodContributions(entries) {
+  const map = new Map();
+
+  for (const entry of entries || []) {
+    const foodItems = buildFoodNutritionRows(entry, extractFoodItems(entry));
+    for (const food of foodItems) {
+      const key = buildFoodKey(food.food_name);
+      if (!key) continue;
+
+      const current = map.get(key) || {
+        key,
+        food_name: food.food_name || "Item",
+        count: 0,
+        estimated_calories: 0,
+        protein_g: 0,
+        carbs_g: 0,
+        fat_g: 0,
+        fat_good_g: 0,
+        fat_bad_g: 0,
+        sodium_mg: 0,
+        sugar_g: 0,
+      };
+
+      current.count += 1;
+      current.estimated_calories += Number(food.estimated_calories || 0);
+      current.protein_g += Number(food.protein_g || 0);
+      current.carbs_g += Number(food.carbs_g || 0);
+      current.fat_g += Number(food.fat_g || 0);
+      current.fat_good_g += Number(food.fat_good_g || 0);
+      current.fat_bad_g += Number(food.fat_bad_g || 0);
+      current.sodium_mg += Number(food.sodium_mg || 0);
+      current.sugar_g += Number(food.sugar_g || 0);
+
+      map.set(key, current);
+    }
+  }
+
+  return [...map.values()];
+}
+
+function topContributorRows(rows, key, { limit = 3, minValue = 0.01 } = {}) {
+  return [...(rows || [])]
+    .filter((item) => Number(item?.[key] || 0) >= minValue)
+    .sort((a, b) => Number(b[key] || 0) - Number(a[key] || 0))
+    .slice(0, limit);
+}
+
+function contributorsLine(rows, key, {
+  label = "Principais fontes",
+  unit = "g",
+  digits = 1,
+  limit = 3,
+  minValue = 0.01,
+} = {}) {
+  const top = topContributorRows(rows, key, { limit, minValue });
+  if (!top.length) return `${label}: sem detalhe suficiente`;
+  return `${label}: ${top.map((item) => `${item.food_name} (${fmtNumber(item[key], digits)} ${unit})`).join(", ")}`;
+}
+
+function hasAnyKeyword(text, keywords) {
+  const normalized = normalizeMarkerName(text || "");
+  if (!normalized) return false;
+  return keywords.some((keyword) => normalized.includes(keyword));
+}
+
+function detectDietRiskSignals(entry) {
+  const foods = extractFoodItems(entry);
+  const joined = [
+    String(entry?.raw_input_text || ""),
+    String(entry?.analyzed_summary || ""),
+    ...foods.map((item) => `${item.food_name || ""} ${item.reason || ""}`),
+  ].join(" | ");
+
+  return {
+    sodium_alert: hasAnyKeyword(joined, SODIUM_ALERT_KEYWORDS),
+    sugar_alert: hasAnyKeyword(joined, SUGAR_ALERT_KEYWORDS),
+  };
+}
+
+function estimateEntrySugarG(entry) {
+  const fromPayload = toNumberOrNull(entry?.ai_payload?.sugar_g);
+  if (fromPayload !== null) return Math.max(0, fromPayload);
+
+  const foodItems = extractFoodItems(entry);
+  const fromItems = foodItems.reduce((acc, item) => acc + Number(item.sugar_g || 0), 0);
+  if (fromItems > 0) return fromItems;
+
+  const carbs = Math.max(0, Number(entry?.estimated_carbs_g || 0));
+  const risk = detectDietRiskSignals(entry);
+  const ratio = risk.sugar_alert ? 0.45 : 0.18;
+  return Math.round(carbs * ratio * 10) / 10;
+}
+
+function estimateEntrySodiumMg(entry) {
+  const fromPayload = toNumberOrNull(entry?.ai_payload?.sodium_mg);
+  if (fromPayload !== null) return Math.max(0, fromPayload);
+
+  const foodItems = extractFoodItems(entry);
+  const fromItems = foodItems.reduce((acc, item) => acc + Number(item.sodium_mg || 0), 0);
+  if (fromItems > 0) return fromItems;
+
+  const calories = Math.max(0, Number(entry?.estimated_calories || 0));
+  const risk = detectDietRiskSignals(entry);
+  const base = risk.sodium_alert ? calories * 3.0 : calories * 1.0;
+  return Math.round(Math.max(risk.sodium_alert ? 250 : 80, base));
+}
+
+function buildFoodNutritionRows(entry, foodItems) {
+  const items = Array.isArray(foodItems) ? foodItems : [];
+  if (!items.length) return [];
+
+  const itemCount = items.length;
+  const totalSugar = estimateEntrySugarG(entry);
+  const totalSodium = estimateEntrySodiumMg(entry);
+  const totalKcal = Math.max(0, Number(entry?.estimated_calories || 0));
+  const totalProtein = Math.max(0, Number(entry?.estimated_protein_g || 0));
+  const totalCarbs = Math.max(0, Number(entry?.estimated_carbs_g || 0));
+  const totalFat = Math.max(0, Number(entry?.estimated_fat_g || 0));
+
+  return items.map((item) => ({
+    ...item,
+    estimated_calories: toNumberOrNull(item.estimated_calories) ?? Number((totalKcal / itemCount).toFixed(1)),
+    protein_g: toNumberOrNull(item.protein_g) ?? Number((totalProtein / itemCount).toFixed(1)),
+    carbs_g: toNumberOrNull(item.carbs_g) ?? Number((totalCarbs / itemCount).toFixed(1)),
+    fat_g: toNumberOrNull(item.fat_g) ?? Number((totalFat / itemCount).toFixed(1)),
+    sodium_mg: toNumberOrNull(item.sodium_mg) ?? Number((totalSodium / itemCount).toFixed(0)),
+    sugar_g: toNumberOrNull(item.sugar_g) ?? Number((totalSugar / itemCount).toFixed(1)),
+  })).map((item) => {
+    const split = estimateFoodFatSplit(item, item.fat_g);
+    return {
+      ...item,
+      fat_good_g: split.fat_good_g,
+      fat_bad_g: split.fat_bad_g,
+    };
+  });
+}
+
+function nutrientSignalClass(value, limit) {
+  const current = Math.max(0, Number(value || 0));
+  const max = Math.max(0, Number(limit || 0));
+  if (!max) return "signal-good";
+  return current > max ? "signal-alert" : "signal-good";
+}
+
+function foodBetterAlternatives(food) {
+  const quality = normalizeNutritionQuality(food?.quality || "bom");
+  const contextText = `${food?.food_name || ""} ${food?.reason || ""}`;
+  const normalized = normalizeMarkerName(contextText);
+
+  if (hasAnyKeyword(contextText, BAD_FAT_KEYWORDS)) {
+    return "Troque por proteína magra (frango, peixe ou ovos) e preparo grelhado/assado.";
+  }
+
+  if (hasAnyKeyword(contextText, SUGAR_ALERT_KEYWORDS)) {
+    return "Prefira fruta in natura, iogurte natural sem açúcar ou chá sem açúcar.";
+  }
+
+  if (hasAnyKeyword(contextText, SODIUM_ALERT_KEYWORDS)) {
+    return "Use versão com menos sal e priorize comida caseira com temperos naturais.";
+  }
+
+  if (
+    normalized.includes("mingau") ||
+    normalized.includes("fuba") ||
+    normalized.includes("arroz branco") ||
+    normalized.includes("pao")
+  ) {
+    return "Combine com proteína (ovo, iogurte, frango) e fibra (fruta com casca, aveia ou salada).";
+  }
+
+  if (quality === "otimo") {
+    return "Mantenha este item e combine com vegetais e água ao longo do dia.";
+  }
+
+  if (quality === "bom") {
+    return "Mantenha, ajustando porção e adicionando fibra/proteína para maior saciedade.";
+  }
+
+  if (quality === "ainda pode, mas pouco") {
+    return "Reduza porção e complemente com opção mais leve e rica em proteína/fibra.";
+  }
+
+  if (quality === "ruim" || quality === "nunca coma") {
+    return "Substitua por refeição simples: proteína magra + vegetal + carboidrato integral.";
+  }
+
+  return "Priorize alimentos in natura e ajuste porção conforme sua meta do período.";
 }
 
 function isLikelyClinicalText(value) {
@@ -826,10 +1247,99 @@ function calorieStatusClass(consumed, target) {
   return safeTarget > 0 && safeConsumed > safeTarget ? "calorie-over" : "calorie-ok";
 }
 
+function targetStatus(consumed, target, options = {}) {
+  const safeTarget = Math.max(0, Number(target || 0));
+  const safeConsumed = Math.max(0, Number(consumed || 0));
+  const mode = options.mode || "max";
+
+  if (!safeTarget) {
+    return {
+      label: "ok",
+      signalClass: "signal-good",
+    };
+  }
+
+  if (mode === "min") {
+    const isBelow = safeConsumed < safeTarget;
+    return {
+      label: isBelow ? "abaixo" : "ok",
+      signalClass: isBelow ? "signal-attention" : "signal-good",
+    };
+  }
+
+  if (mode === "range") {
+    const minRatio = Math.max(0, Number(options.minRatio ?? 0.85));
+    const maxRatio = Math.max(minRatio, Number(options.maxRatio ?? 1.2));
+    const ratio = safeTarget > 0 ? safeConsumed / safeTarget : 1;
+    if (ratio < minRatio) {
+      return {
+        label: "abaixo",
+        signalClass: "signal-attention",
+      };
+    }
+    if (ratio > maxRatio) {
+      return {
+        label: "acima",
+        signalClass: "signal-alert",
+      };
+    }
+    return {
+      label: "ok",
+      signalClass: "signal-good",
+    };
+  }
+
+  const isOver = safeTarget > 0 && safeConsumed > safeTarget;
+  return {
+    label: isOver ? "acima" : "ok",
+    signalClass: isOver ? "signal-alert" : "signal-good",
+  };
+}
+
+function deltaLine(consumed, target, unit = "g", digits = 1) {
+  const safeConsumed = Math.max(0, Number(consumed || 0));
+  const safeTarget = Math.max(0, Number(target || 0));
+  const delta = Number((safeConsumed - safeTarget).toFixed(digits));
+  if (Math.abs(delta) <= (digits ? 0.05 : 0.5)) return `Diferença: 0 ${unit}`;
+  if (delta > 0) return `Excesso: +${fmtNumber(delta, digits)} ${unit}`;
+  return `Faltam: ${fmtNumber(Math.abs(delta), digits)} ${unit}`;
+}
+
+function contributionPct(value, total) {
+  const safeValue = Math.max(0, Number(value || 0));
+  const safeTotal = Math.max(0, Number(total || 0));
+  if (!safeTotal) return 0;
+  return (safeValue / safeTotal) * 100;
+}
+
+function contributionSignalClass(value, total, { alertPct = 35, attentionPct = 20 } = {}) {
+  const pct = contributionPct(value, total);
+  if (pct >= alertPct) return "signal-alert";
+  if (pct >= attentionPct) return "signal-attention";
+  return "signal-good";
+}
+
+function mealMacroTargets(dailyTargets, mealSlot, periodDays = 1) {
+  const ratio = MEAL_CALORIE_RATIO[mealSlot] || MEAL_CALORIE_RATIO.lanche_da_manha;
+  const days = Math.max(1, Number(periodDays || 1));
+  return {
+    calories: Math.max(1, dailyTargets.calories * ratio * days),
+    protein: Math.max(1, dailyTargets.protein_g * ratio * days),
+    carbs: Math.max(1, dailyTargets.carbs_g * ratio * days),
+    fat: Math.max(1, dailyTargets.fat_g * ratio * days),
+  };
+}
+
 const NUTRITION_QUALITY_ORDER = ["nunca coma", "ruim", "ainda pode, mas pouco", "bom", "otimo"];
 
 function normalizeNutritionQuality(value) {
-  const normalized = String(value || "").toLowerCase().trim();
+  const normalized = String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+  if (normalized === "cuidado" || normalized === "moderado") return "ainda pode, mas pouco";
+  if (normalized === "critico") return "nunca coma";
   return NUTRITION_QUALITY_ORDER.includes(normalized) ? normalized : "bom";
 }
 
@@ -876,6 +1386,14 @@ function normalizeFoodItems(items) {
       portion: String(item?.portion || "porção não informada").trim(),
       quality: normalizeNutritionQuality(item?.quality || "bom"),
       reason: String(item?.reason || "sem observação").trim(),
+      estimated_calories: toNumberOrNull(item?.estimated_calories),
+      protein_g: toNumberOrNull(item?.protein_g),
+      carbs_g: toNumberOrNull(item?.carbs_g),
+      fat_g: toNumberOrNull(item?.fat_g),
+      fat_good_g: toNumberOrNull(item?.fat_good_g),
+      fat_bad_g: toNumberOrNull(item?.fat_bad_g),
+      sodium_mg: toNumberOrNull(item?.sodium_mg),
+      sugar_g: toNumberOrNull(item?.sugar_g),
     }))
     .filter((item) => item.food_name)
     .slice(0, 20);
@@ -889,7 +1407,25 @@ function mergeFoodItems(baseItems, nextItems) {
 
   for (const item of normalizeFoodItems(nextItems)) {
     const key = `${item.food_name.toLowerCase()}::${item.portion.toLowerCase()}`;
-    if (seen.has(key)) continue;
+    if (seen.has(key)) {
+      const index = merged.findIndex((current) => `${current.food_name.toLowerCase()}::${current.portion.toLowerCase()}` === key);
+      if (index >= 0) {
+        merged[index] = {
+          ...merged[index],
+          ...item,
+          quality: pickWorseQuality(merged[index].quality, item.quality),
+          estimated_calories: sumNullableNumbers(merged[index].estimated_calories, item.estimated_calories, 0),
+          protein_g: sumNullableNumbers(merged[index].protein_g, item.protein_g, 1),
+          carbs_g: sumNullableNumbers(merged[index].carbs_g, item.carbs_g, 1),
+          fat_g: sumNullableNumbers(merged[index].fat_g, item.fat_g, 1),
+          fat_good_g: sumNullableNumbers(merged[index].fat_good_g, item.fat_good_g, 1),
+          fat_bad_g: sumNullableNumbers(merged[index].fat_bad_g, item.fat_bad_g, 1),
+          sodium_mg: sumNullableNumbers(merged[index].sodium_mg, item.sodium_mg, 0),
+          sugar_g: sumNullableNumbers(merged[index].sugar_g, item.sugar_g, 1),
+        };
+      }
+      continue;
+    }
     seen.add(key);
     merged.push(item);
   }
@@ -915,6 +1451,10 @@ function normalizeAnalysisPayload(payload) {
     protein_g: toNumberOrNull(analysis.protein_g),
     carbs_g: toNumberOrNull(analysis.carbs_g),
     fat_g: toNumberOrNull(analysis.fat_g),
+    fat_good_g: toNumberOrNull(analysis.fat_good_g),
+    fat_bad_g: toNumberOrNull(analysis.fat_bad_g),
+    sodium_mg: toNumberOrNull(analysis.sodium_mg),
+    sugar_g: toNumberOrNull(analysis.sugar_g),
     food_items: normalizeFoodItems(analysis.food_items),
   };
 }
@@ -938,13 +1478,45 @@ function mergeNutritionAnalysis(base, next) {
     protein_g: sumNullableNumbers(left.protein_g, right.protein_g, 1),
     carbs_g: sumNullableNumbers(left.carbs_g, right.carbs_g, 1),
     fat_g: sumNullableNumbers(left.fat_g, right.fat_g, 1),
+    fat_good_g: sumNullableNumbers(left.fat_good_g, right.fat_good_g, 1),
+    fat_bad_g: sumNullableNumbers(left.fat_bad_g, right.fat_bad_g, 1),
+    sodium_mg: sumNullableNumbers(left.sodium_mg, right.sodium_mg, 0),
+    sugar_g: sumNullableNumbers(left.sugar_g, right.sugar_g, 1),
     food_items: mergeFoodItems(left.food_items, right.food_items),
   };
 }
 
 function buildNutritionAnalysisHtml(payload, { title = "Análise nutricional", subtitle = "" } = {}) {
   const normalized = normalizeAnalysisPayload(payload);
-  const foodItems = normalized.food_items;
+  const dailyTargets = estimateMacroTargetsByCalories(Number(state.cache.dashboard?.overview?.today?.nutrition_calories_goal_kcal || 2200));
+  const mealTargets = mealMacroTargets(dailyTargets, normalized.meal_slot || "outro", 1);
+  const entryAdapter = {
+    estimated_calories: normalized.estimated_calories,
+    estimated_protein_g: normalized.protein_g,
+    estimated_carbs_g: normalized.carbs_g,
+    estimated_fat_g: normalized.fat_g,
+    ai_payload: {
+      sodium_mg: normalized.sodium_mg,
+      sugar_g: normalized.sugar_g,
+    },
+  };
+  const foodItems = buildFoodNutritionRows(entryAdapter, normalized.food_items);
+  const fatGoodTotal = foodItems.reduce((acc, item) => acc + Number(item.fat_good_g || 0), 0);
+  const fatBadTotal = foodItems.reduce((acc, item) => acc + Number(item.fat_bad_g || 0), 0);
+  const topProtein = topContributorRows(foodItems, "protein_g", { limit: 3, minValue: 0.1 });
+  const topCarbs = topContributorRows(foodItems, "carbs_g", { limit: 3, minValue: 0.1 });
+  const topFat = topContributorRows(foodItems, "fat_g", { limit: 3, minValue: 0.1 });
+  const topFatBad = topContributorRows(foodItems, "fat_bad_g", { limit: 3, minValue: 0.1 });
+  const topSodium = topContributorRows(foodItems, "sodium_mg", { limit: 3, minValue: 1 });
+  const topSugar = topContributorRows(foodItems, "sugar_g", { limit: 3, minValue: 0.1 });
+
+  const analysisProteinStatus = targetStatus(normalized.protein_g, mealTargets.protein, { mode: "range", minRatio: 0.75, maxRatio: 1.5 });
+  const analysisCarbsStatus = targetStatus(normalized.carbs_g, mealTargets.carbs, { mode: "max" });
+  const analysisFatStatus = targetStatus(normalized.fat_g, mealTargets.fat, { mode: "max" });
+  const analysisFatGoodStatus = targetStatus(fatGoodTotal, mealTargets.fat * 0.6, { mode: "min" });
+  const analysisFatBadStatus = targetStatus(fatBadTotal, mealTargets.fat * 0.4, { mode: "max" });
+  const analysisSodiumStatus = targetStatus(normalized.sodium_mg, 700, { mode: "max" });
+  const analysisSugarStatus = targetStatus(normalized.sugar_g, 12, { mode: "max" });
 
   const headerSubtitle = subtitle ? `<p class="muted">${escapeHtml(subtitle)}</p>` : "";
   const mealLabel = mealSlotLabel(normalized.meal_slot);
@@ -956,9 +1528,22 @@ function buildNutritionAnalysisHtml(payload, { title = "Análise nutricional", s
           .map(
             (item) => `
           <article class="analysis-food-item">
-            <p><strong>${escapeHtml(item.food_name)}</strong> <span class="tag ${qualityClass(item.quality)}">${escapeHtml(item.quality)}</span></p>
+            <p><strong>${escapeHtml(item.food_name)}</strong> <span class="tag ${qualityClass(item.quality)}">${escapeHtml(qualityLabel(item.quality))}</span></p>
+            <p class="muted">Calorias: ${fmtNumber(item.estimated_calories, 0)} kcal</p>
+            <p class="nutrition-food-signals">
+              <span class="signal ${contributionSignalClass(item.protein_g, normalized.protein_g, { alertPct: 45, attentionPct: 20 })}">P ${fmtNumber(item.protein_g)}g</span>
+              <span class="signal ${contributionSignalClass(item.carbs_g, normalized.carbs_g, { alertPct: 45, attentionPct: 20 })}">C ${fmtNumber(item.carbs_g)}g</span>
+              <span class="signal ${contributionSignalClass(item.fat_g, normalized.fat_g, { alertPct: 45, attentionPct: 20 })}">G ${fmtNumber(item.fat_g)}g</span>
+            </p>
+            <p class="nutrition-food-signals">
+              <span class="signal ${contributionSignalClass(item.fat_good_g, fatGoodTotal, { alertPct: 45, attentionPct: 20 })}">Gord. boa ${fmtNumber(item.fat_good_g)}g</span>
+              <span class="signal ${contributionSignalClass(item.fat_bad_g, fatBadTotal, { alertPct: 45, attentionPct: 20 })}">Gord. ruim ${fmtNumber(item.fat_bad_g)}g</span>
+              <span class="signal ${nutrientSignalClass(item.sodium_mg, 400)}">Sódio ${fmtNumber(item.sodium_mg, 0)} mg</span>
+              <span class="signal ${nutrientSignalClass(item.sugar_g, 8)}">Açúcar ${fmtNumber(item.sugar_g, 1)} g</span>
+            </p>
             <p class="muted">Porção: ${escapeHtml(item.portion)}</p>
             <p class="muted">${escapeHtml(item.reason)}</p>
+            <p class="muted"><strong>Alternativas melhores:</strong> ${escapeHtml(foodBetterAlternatives(item))}</p>
           </article>
         `
           )
@@ -972,7 +1557,7 @@ function buildNutritionAnalysisHtml(payload, { title = "Análise nutricional", s
       <h4>${escapeHtml(title)}</h4>
       ${headerSubtitle}
       <div class="analysis-row">
-        <span class="tag ${qualityClass(normalized.quality)}">${escapeHtml(normalized.quality)}</span>
+        <span class="tag ${qualityClass(normalized.quality)}">${escapeHtml(qualityLabel(normalized.quality))}</span>
         <span class="tag quality-default">${escapeHtml(mealLabel)}</span>
       </div>
       <p><strong>Resumo geral:</strong> ${escapeHtml(normalized.summary || "sem resumo")}</p>
@@ -980,7 +1565,24 @@ function buildNutritionAnalysisHtml(payload, { title = "Análise nutricional", s
         <p><strong>Água detectada:</strong> ${fmtNumber(normalized.water_intake_ml, 0)} ml</p>
         <p><strong>Meta sugerida:</strong> ${fmtNumber(normalized.water_recommended_ml, 0)} ml</p>
       </div>
-      <p><strong>Macros estimadas:</strong> ${fmtNumber(normalized.estimated_calories, 0)} kcal | P ${fmtNumber(normalized.protein_g)}g | C ${fmtNumber(normalized.carbs_g)}g | G ${fmtNumber(normalized.fat_g)}g</p>
+      <p><strong>Calorias:</strong> ${fmtNumber(normalized.estimated_calories, 0)} kcal</p>
+      <p class="nutrition-food-signals">
+        <span class="signal ${analysisProteinStatus.signalClass}">P ${fmtNumber(normalized.protein_g)}g</span>
+        <span class="signal ${analysisCarbsStatus.signalClass}">C ${fmtNumber(normalized.carbs_g)}g</span>
+        <span class="signal ${analysisFatStatus.signalClass}">G ${fmtNumber(normalized.fat_g)}g</span>
+      </p>
+      <p class="nutrition-food-signals">
+        <span class="signal ${analysisFatGoodStatus.signalClass}">Gord. boa ${fmtNumber(fatGoodTotal)} g</span>
+        <span class="signal ${analysisFatBadStatus.signalClass}">Gord. ruim ${fmtNumber(fatBadTotal)} g</span>
+        <span class="signal ${analysisSodiumStatus.signalClass}">Sódio ${fmtNumber(normalized.sodium_mg, 0)} mg</span>
+        <span class="signal ${analysisSugarStatus.signalClass}">Açúcar ${fmtNumber(normalized.sugar_g, 1)} g</span>
+      </p>
+      <p class="muted">${escapeHtml(contributorsLine(topProtein, "protein_g", { unit: "g", digits: 1 }))}</p>
+      <p class="muted">${escapeHtml(contributorsLine(topCarbs, "carbs_g", { unit: "g", digits: 1 }))}</p>
+      <p class="muted">${escapeHtml(contributorsLine(topFat, "fat_g", { unit: "g", digits: 1 }))}</p>
+      <p class="muted">${escapeHtml(contributorsLine(topFatBad, "fat_bad_g", { label: "Principais fontes de gordura ruim", unit: "g", digits: 1 }))}</p>
+      <p class="muted">${escapeHtml(contributorsLine(topSodium, "sodium_mg", { unit: "mg", digits: 0 }))}</p>
+      <p class="muted">${escapeHtml(contributorsLine(topSugar, "sugar_g", { unit: "g", digits: 1 }))}</p>
       <div>
         <p><strong>Itens analisados:</strong></p>
         ${itemsHtml}
@@ -1104,7 +1706,7 @@ function renderDailyComparison() {
     <article class="comparison-card">
       <h4>Seu dia registrado</h4>
       <p><span class="signal ${signalClassByRatio(waterRatio)}">Água</span> ${fmtNumber(hydrationTotal, 0)} / ${fmtNumber(hydrationGoal, 0)} ml</p>
-      <p><span class="signal ${signalClassByRatio(mealsRatio)}">Refeições</span> ${nutritionCount} registradas (${escapeHtml(latestQuality)})</p>
+      <p><span class="signal ${signalClassByRatio(mealsRatio)}">Refeições</span> ${nutritionCount} registradas (${escapeHtml(qualityLabel(latestQuality))})</p>
       <p><span class="signal ${signalClassByRatio(workoutRatio)}">Exercício</span> ${workoutSessions.length} sessão(ões), ${fmtNumber(workoutMinutes, 0)} min</p>
       <p class="muted">Período atual: ${fmtDate(state.filter.from)} até ${fmtDate(state.filter.to)}</p>
     </article>
@@ -1206,20 +1808,24 @@ function renderWorkoutInsights() {
 }
 
 function renderNutritionDashboard() {
+  const waterTotalNode = document.getElementById("nutrition-water-total");
+  const waterSubNode = document.getElementById("nutrition-water-sub");
+  const waterDistributionNode = document.getElementById("nutrition-water-distribution");
   const mealsContainer = document.getElementById("nutrition-slot-cards");
   const detailsContainer = document.getElementById("nutrition-details-list");
   const caloriesTotalNode = document.getElementById("nutrition-calories-total");
   const caloriesMetaNode = document.getElementById("nutrition-calories-meta");
   const workoutCaloriesNode = document.getElementById("nutrition-workouts-calories");
-  const caloriesBySlotNode = document.getElementById("nutrition-calories-by-slot");
   const macrosOverviewNode = document.getElementById("nutrition-macros-overview");
   if (
+    !waterTotalNode ||
+    !waterSubNode ||
+    !waterDistributionNode ||
     !mealsContainer ||
     !detailsContainer ||
     !caloriesTotalNode ||
     !caloriesMetaNode ||
     !workoutCaloriesNode ||
-    !caloriesBySlotNode ||
     !macrosOverviewNode
   ) {
     return;
@@ -1228,12 +1834,19 @@ function renderNutritionDashboard() {
   const nutritionEntries = state.cache.nutrition || [];
   const grouped = buildMealSlotsData(nutritionEntries);
   const calorieGoal = Number(state.cache.dashboard?.overview?.today?.nutrition_calories_goal_kcal || 2200);
+  const hydrationGoalDaily = Number(state.cache.dashboard?.overview?.today?.hydration_goal_ml || 3000);
   const targets = estimateMacroTargetsByCalories(calorieGoal);
+  const periodDays = activeFilterDayCount();
 
   document.getElementById("nutrition-total-entries").textContent = String(nutritionEntries.length || 0);
 
   const hydrationTotal = (state.cache.hydration || []).reduce((acc, item) => acc + Number(item.amount_ml || 0), 0);
-  document.getElementById("nutrition-water-total").textContent = `${fmtNumber(hydrationTotal, 0)} ml`;
+  const hydrationPeriodGoal = Math.round(hydrationGoalDaily * periodDays);
+  waterTotalNode.textContent = `${fmtNumber(hydrationTotal, 0)} / ${fmtNumber(hydrationPeriodGoal, 0)} ml`;
+  waterSubNode.textContent = `meta do período (${periodDays} dia${periodDays > 1 ? "s" : ""}) | ${fmtNumber(hydrationGoalDaily, 0)} ml/dia`;
+  const shotsLow = Math.round((hydrationGoalDaily / 10) / 50) * 50;
+  const shotsHigh = Math.round((hydrationGoalDaily / 8) / 50) * 50;
+  waterDistributionNode.textContent = `distribuição: ${fmtNumber(shotsLow, 0)}-${fmtNumber(shotsHigh, 0)} ml por tomada (8-10 tomadas/dia)`;
 
   const workoutSessions = state.cache.workouts || [];
   const workoutMinutes = workoutSessions.reduce((acc, item) => acc + Number(item.duration_minutes || 0), 0);
@@ -1246,71 +1859,202 @@ function renderNutritionDashboard() {
   const totalProtein = nutritionEntries.reduce((acc, item) => acc + Number(item.estimated_protein_g || 0), 0);
   const totalCarbs = nutritionEntries.reduce((acc, item) => acc + Number(item.estimated_carbs_g || 0), 0);
   const totalFat = nutritionEntries.reduce((acc, item) => acc + Number(item.estimated_fat_g || 0), 0);
-  const periodDays = activeFilterDayCount();
   const periodCaloriesGoal = Math.round(targets.calories * periodDays);
 
   caloriesTotalNode.className = `metric-value ${calorieStatusClass(totalCalories, periodCaloriesGoal)}`;
   caloriesTotalNode.textContent = `${fmtNumber(totalCalories, 0)} / ${fmtNumber(periodCaloriesGoal, 0)} kcal`;
   caloriesMetaNode.textContent = `meta do período (${periodDays} dia${periodDays > 1 ? "s" : ""}) | ${fmtNumber(targets.calories, 0)} kcal/dia`;
 
-  caloriesBySlotNode.innerHTML = MEAL_SLOTS_CORE.map((slot) => {
+  const slotMetrics = Object.fromEntries(MEAL_SLOTS_CORE.map((slot) => {
     const entries = grouped[slot.key] || [];
-    const slotCalories = entries.reduce((acc, item) => acc + Number(item.estimated_calories || 0), 0);
-    const slotGoal = Math.round(targets.calories * (MEAL_CALORIE_RATIO[slot.key] || 0) * periodDays);
-    const slotStatus = calorieStatusClass(slotCalories, slotGoal);
-    return `
-      <article class="history-item">
-        <header>
-          <strong>${slot.label}</strong>
-          <span class="tag quality-default">${entries.length} registro(s)</span>
-        </header>
-        <p class="calorie-line ${slotStatus}">
-          <strong>${fmtNumber(slotCalories, 0)} / ${fmtNumber(slotGoal, 0)} kcal</strong>
-        </p>
-      </article>
-    `;
-  }).join("");
+    const calories = entries.reduce((acc, item) => acc + Number(item.estimated_calories || 0), 0);
+    const goal = Math.round(targets.calories * (MEAL_CALORIE_RATIO[slot.key] || 0) * periodDays);
+    return [slot.key, {
+      entries,
+      calories,
+      goal,
+      statusClass: calorieStatusClass(calories, goal),
+    }];
+  }));
+
+  const riskBaseEntries = nutritionEntries.filter((entry) => {
+    const slot = resolveMealSlot(entry);
+    const isMealSlot = MEAL_SLOTS_CORE.some((item) => item.key === slot);
+    if (!isMealSlot) return false;
+    return !isLikelyClinicalText(entry.raw_input_text || entry.analyzed_summary);
+  });
+
+  let sodiumAlerts = 0;
+  let sugarAlerts = 0;
+  let sodiumConsumedMg = 0;
+  let sugarConsumedG = 0;
+  for (const entry of riskBaseEntries) {
+    const risk = detectDietRiskSignals(entry);
+    if (risk.sodium_alert) sodiumAlerts += 1;
+    if (risk.sugar_alert) sugarAlerts += 1;
+    sodiumConsumedMg += estimateEntrySodiumMg(entry);
+    sugarConsumedG += estimateEntrySugarG(entry);
+  }
+  const riskBaseCount = riskBaseEntries.length;
+  const sugarGoalG = 30 * periodDays;
+  const sodiumGoalMg = 2000 * periodDays;
+  const sugarExcessG = Math.max(0, sugarConsumedG - sugarGoalG);
+  const sodiumExcessMg = Math.max(0, sodiumConsumedMg - sodiumGoalMg);
+  const sodiumFreqPct = riskBaseCount ? (sodiumAlerts / riskBaseCount) * 100 : 0;
+  const sugarFreqPct = riskBaseCount ? (sugarAlerts / riskBaseCount) * 100 : 0;
+  const periodProteinGoal = Math.round(targets.protein_g * periodDays);
+  const periodCarbsGoal = Math.round(targets.carbs_g * periodDays);
+  const periodFatGoal = Math.round(targets.fat_g * periodDays);
+  const foodContributionRows = buildPeriodFoodContributions(riskBaseEntries);
+  const totalFatGood = foodContributionRows.reduce((acc, item) => acc + Number(item.fat_good_g || 0), 0);
+  const totalFatBad = foodContributionRows.reduce((acc, item) => acc + Number(item.fat_bad_g || 0), 0);
+  const fatGoodGoalMin = Math.round(periodFatGoal * 0.6);
+  const fatBadGoalMax = Math.round(periodFatGoal * 0.4);
+
+  const topContributionSets = {
+    protein: new Set(topContributorRows(foodContributionRows, "protein_g", { limit: 4, minValue: 1 }).map((item) => item.key)),
+    carbs: new Set(topContributorRows(foodContributionRows, "carbs_g", { limit: 4, minValue: 1 }).map((item) => item.key)),
+    fat: new Set(topContributorRows(foodContributionRows, "fat_g", { limit: 4, minValue: 1 }).map((item) => item.key)),
+    fatBad: new Set(topContributorRows(foodContributionRows, "fat_bad_g", { limit: 4, minValue: 0.5 }).map((item) => item.key)),
+    sodium: new Set(topContributorRows(foodContributionRows, "sodium_mg", { limit: 4, minValue: 50 }).map((item) => item.key)),
+    sugar: new Set(topContributorRows(foodContributionRows, "sugar_g", { limit: 4, minValue: 1 }).map((item) => item.key)),
+  };
+
+  const proteinStatus = targetStatus(totalProtein, periodProteinGoal, { mode: "range", minRatio: 0.85, maxRatio: 1.2 });
+  const carbsStatus = targetStatus(totalCarbs, periodCarbsGoal, { mode: "max" });
+  const fatStatus = targetStatus(totalFat, periodFatGoal, { mode: "max" });
+  const fatGoodStatus = targetStatus(totalFatGood, fatGoodGoalMin, { mode: "min" });
+  const fatBadStatus = targetStatus(totalFatBad, fatBadGoalMax, { mode: "max" });
 
   macrosOverviewNode.innerHTML = [
     {
       title: "Proteína",
       consumed: totalProtein,
-      target: targets.protein_g,
+      target: periodProteinGoal,
+      unit: "g",
+      digits: 1,
+      status: proteinStatus,
+      lines: [
+        `Proteína: ${fmtNumber(totalProtein, 1)} g (meta ${fmtNumber(periodProteinGoal, 0)} g)`,
+        deltaLine(totalProtein, periodProteinGoal, "g", 1),
+        contributorsLine(foodContributionRows, "protein_g", { unit: "g", digits: 1 }),
+      ],
     },
     {
       title: "Carboidrato",
       consumed: totalCarbs,
-      target: targets.carbs_g,
+      target: periodCarbsGoal,
+      unit: "g",
+      digits: 1,
+      status: carbsStatus,
+      lines: [
+        `Carboidrato: ${fmtNumber(totalCarbs, 1)} g (ideal até ${fmtNumber(periodCarbsGoal, 0)} g)`,
+        deltaLine(totalCarbs, periodCarbsGoal, "g", 1),
+        contributorsLine(foodContributionRows, "carbs_g", { unit: "g", digits: 1 }),
+      ],
     },
     {
       title: "Gordura",
       consumed: totalFat,
-      target: targets.fat_g,
+      target: periodFatGoal,
+      unit: "g",
+      digits: 1,
+      status: fatStatus,
+      lines: [
+        `Gordura: ${fmtNumber(totalFat, 1)} g (ideal até ${fmtNumber(periodFatGoal, 0)} g)`,
+        deltaLine(totalFat, periodFatGoal, "g", 1),
+        contributorsLine(foodContributionRows, "fat_g", { unit: "g", digits: 1 }),
+      ],
+    },
+    {
+      title: "Gordura boa (estimada)",
+      consumed: totalFatGood,
+      target: fatGoodGoalMin,
+      unit: "g",
+      digits: 1,
+      status: fatGoodStatus,
+      lines: [
+        `Gordura boa: ${fmtNumber(totalFatGood, 1)} g (meta mínima ${fmtNumber(fatGoodGoalMin, 0)} g)`,
+        totalFatGood >= fatGoodGoalMin
+          ? "Dentro da faixa mínima para gordura de melhor qualidade."
+          : `Faltam: ${fmtNumber(Math.max(0, fatGoodGoalMin - totalFatGood), 1)} g`,
+        contributorsLine(foodContributionRows, "fat_good_g", { unit: "g", digits: 1 }),
+      ],
+    },
+    {
+      title: "Gordura ruim (estimada)",
+      consumed: totalFatBad,
+      target: fatBadGoalMax,
+      unit: "g",
+      digits: 1,
+      status: fatBadStatus,
+      lines: [
+        `Gordura ruim: ${fmtNumber(totalFatBad, 1)} g (ideal até ${fmtNumber(fatBadGoalMax, 0)} g)`,
+        deltaLine(totalFatBad, fatBadGoalMax, "g", 1),
+        contributorsLine(foodContributionRows, "fat_bad_g", { unit: "g", digits: 1 }),
+      ],
+    },
+    {
+      title: "Sódio (estimado)",
+      consumed: sodiumConsumedMg,
+      target: sodiumGoalMg,
+      status: targetStatus(sodiumConsumedMg, sodiumGoalMg, { mode: "max" }),
+      lines: [
+        `Sódio: ${fmtNumber(sodiumConsumedMg, 0)} mg (ideal até ${fmtNumber(sodiumGoalMg, 0)} mg)`,
+        `Excesso: +${fmtNumber(sodiumExcessMg, 0)} mg`,
+        riskBaseCount
+          ? `Frequência: ${sodiumAlerts} de ${riskBaseCount} refeições (${fmtNumber(sodiumFreqPct, 0)}%)`
+          : "Frequência: sem refeições suficientes no período",
+        contributorsLine(foodContributionRows, "sodium_mg", { unit: "mg", digits: 0, minValue: 50 }),
+      ],
+    },
+    {
+      title: "Açúcar (estimado)",
+      consumed: sugarConsumedG,
+      target: sugarGoalG,
+      status: targetStatus(sugarConsumedG, sugarGoalG, { mode: "max" }),
+      lines: [
+        `Açúcar: ${fmtNumber(sugarConsumedG, 1)} g (ideal até ${fmtNumber(sugarGoalG, 0)} g)`,
+        `Excesso: +${fmtNumber(sugarExcessG, 1)} g`,
+        riskBaseCount
+          ? `Frequência: ${sugarAlerts} de ${riskBaseCount} refeições (${fmtNumber(sugarFreqPct, 0)}%)`
+          : "Frequência: sem refeições suficientes no período",
+        contributorsLine(foodContributionRows, "sugar_g", { unit: "g", digits: 1 }),
+      ],
     },
   ]
     .map((item) => {
-      const ratio = item.target > 0 ? item.consumed / item.target : 0;
-      const signalClass = signalClassByRatio(ratio, 1, 0.75);
+      const status = item.status || targetStatus(item.consumed, item.target, item.statusOptions);
+      const digits = Number(item.digits || 0);
+      const metricText = `${fmtNumber(item.consumed, digits)} / ${fmtNumber(item.target, digits)} ${item.unit || ""}`.trim();
       return `
         <article class="macro-card">
           <h4>${item.title}</h4>
-          <p><strong>${fmtNumber(item.consumed, 0)} / ${fmtNumber(item.target, 0)} g</strong></p>
-          <span class="signal ${signalClass}">${fmtNumber(ratio * 100, 0)}%</span>
+          ${
+            Array.isArray(item.lines) && item.lines.length
+              ? item.lines.map((line, idx) => `<p${idx === 0 ? "" : ' class="muted"'}>${escapeHtml(line)}</p>`).join("")
+              : `<p><strong>${metricText}</strong></p>`
+          }
+          <span class="signal ${status.signalClass}">${status.label}</span>
         </article>
       `;
     })
     .join("");
 
   mealsContainer.innerHTML = MEAL_SLOTS_CORE.map((slot) => {
-    const entries = grouped[slot.key] || [];
-    const latest = entries[0];
+    const metric = slotMetrics[slot.key] || { entries: [], calories: 0, goal: 0, statusClass: "calorie-ok" };
+    const entries = metric.entries || [];
+    const latest = entries[0] || null;
     const latestQuality = latest?.meal_quality || "sem registro";
 
     return `
       <article class="meal-card">
         <h4>${slot.label}</h4>
         <p><strong>${entries.length}</strong> registro(s)</p>
-        <p class="tag ${qualityClass(latestQuality)}">${escapeHtml(latestQuality)}</p>
+        <p class="tag ${qualityClass(latestQuality)}">${escapeHtml(qualityLabel(latestQuality))}</p>
+        <p class="calorie-line ${metric.statusClass}">
+          <strong>${fmtNumber(metric.calories, 0)} / ${fmtNumber(metric.goal, 0)} kcal</strong>
+        </p>
         <p class="muted">Último: ${latest ? fmtDateTime(latest.recorded_at) : "-"}</p>
       </article>
     `;
@@ -1338,26 +2082,99 @@ function renderNutritionDashboard() {
     groupedBySlot[slot].push(entry);
   }
 
+  const excessContext = {
+    protein: proteinStatus.label === "acima",
+    carbs: totalCarbs > periodCarbsGoal,
+    fat: totalFat > periodFatGoal,
+    fatBad: totalFatBad > fatBadGoalMax,
+    sodium: sodiumConsumedMg > sodiumGoalMg,
+    sugar: sugarConsumedG > sugarGoalG,
+  };
+
   detailsContainer.innerHTML = MEAL_SLOTS_CORE.map((slot) => {
     const entries = groupedBySlot[slot.key] || [];
     const detailedEntries = entries.slice(0, 6).map((entry) => {
       const quality = entry.meal_quality || "sem registro";
       const foodItems = extractFoodItems(entry);
+      const enrichedFoodItems = buildFoodNutritionRows(entry, foodItems);
       const summary = entry.analyzed_summary || mealTextPreview(entry);
+      const risk = detectDietRiskSignals(entry);
+      const entrySlot = resolveMealSlot(entry);
+      const entryTargets = mealMacroTargets(targets, entrySlot, 1);
+      const entryFatGood = enrichedFoodItems.reduce((acc, item) => acc + Number(item.fat_good_g || 0), 0);
+      const entryFatBad = enrichedFoodItems.reduce((acc, item) => acc + Number(item.fat_bad_g || 0), 0);
+      const entryProteinStatus = targetStatus(entry.estimated_protein_g, entryTargets.protein, { mode: "range", minRatio: 0.75, maxRatio: 1.5 });
+      const entryCarbsStatus = targetStatus(entry.estimated_carbs_g, entryTargets.carbs, { mode: "max" });
+      const entryFatStatus = targetStatus(entry.estimated_fat_g, entryTargets.fat, { mode: "max" });
+      const entryFatGoodStatus = targetStatus(entryFatGood, entryTargets.fat * 0.6, { mode: "min" });
+      const entryFatBadStatus = targetStatus(entryFatBad, entryTargets.fat * 0.4, { mode: "max" });
 
-      const foodDetails = foodItems.length
+      const foodDetails = enrichedFoodItems.length
         ? `
           <div class="nutrition-food-list">
-            ${foodItems.map((food) => `
-              <article class="nutrition-food-item">
-                <p>
-                  <strong>${escapeHtml(food.food_name)}</strong>
-                  <span class="tag ${qualityClass(food.quality)}">${escapeHtml(food.quality)}</span>
-                </p>
-                <p class="nutrition-food-meta">Porção: ${escapeHtml(food.portion || "não informada")}</p>
-                <p class="nutrition-food-meta">${escapeHtml(food.reason || "sem observação")}</p>
-              </article>
-            `).join("")}
+            ${enrichedFoodItems.map((food) => {
+              const key = buildFoodKey(food.food_name);
+              const proteinSignal = excessContext.protein && topContributionSets.protein.has(key)
+                ? "signal-alert"
+                : contributionSignalClass(food.protein_g, totalProtein, { alertPct: 35, attentionPct: 22 });
+              const carbsSignal = excessContext.carbs && topContributionSets.carbs.has(key)
+                ? "signal-alert"
+                : contributionSignalClass(food.carbs_g, totalCarbs, { alertPct: 32, attentionPct: 18 });
+              const fatSignal = excessContext.fat && topContributionSets.fat.has(key)
+                ? "signal-alert"
+                : contributionSignalClass(food.fat_g, totalFat, { alertPct: 32, attentionPct: 18 });
+              const fatBadSignal = excessContext.fatBad && topContributionSets.fatBad.has(key)
+                ? "signal-alert"
+                : contributionSignalClass(food.fat_bad_g, totalFatBad, { alertPct: 30, attentionPct: 18 });
+              const sodiumSignal = excessContext.sodium && topContributionSets.sodium.has(key)
+                ? "signal-alert"
+                : nutrientSignalClass(food.sodium_mg, 400);
+              const sugarSignal = excessContext.sugar && topContributionSets.sugar.has(key)
+                ? "signal-alert"
+                : nutrientSignalClass(food.sugar_g, 8);
+
+              const impactTags = [];
+              if (excessContext.carbs && topContributionSets.carbs.has(key)) impactTags.push("carboidrato");
+              if (excessContext.fat && topContributionSets.fat.has(key)) impactTags.push("gordura total");
+              if (excessContext.fatBad && topContributionSets.fatBad.has(key)) impactTags.push("gordura ruim");
+              if (excessContext.sodium && topContributionSets.sodium.has(key)) impactTags.push("sódio");
+              if (excessContext.sugar && topContributionSets.sugar.has(key)) impactTags.push("açúcar");
+              const impactLine = impactTags.length
+                ? `<p class="nutrition-food-impact"><strong>Impacto no excesso do período:</strong> ${escapeHtml(impactTags.join(", "))}</p>`
+                : "";
+
+              return `
+                <article class="nutrition-food-item">
+                  <p>
+                    <strong>${escapeHtml(food.food_name)}</strong>
+                    <span class="tag ${qualityClass(food.quality)}">${escapeHtml(qualityLabel(food.quality))}</span>
+                  </p>
+                  <p class="nutrition-food-meta">
+                    <strong>Macros:</strong> ${fmtNumber(food.estimated_calories, 0)} kcal
+                  </p>
+                  <p class="nutrition-food-signals">
+                    <span class="signal ${proteinSignal}">P ${fmtNumber(food.protein_g)}g</span>
+                    <span class="signal ${carbsSignal}">C ${fmtNumber(food.carbs_g)}g</span>
+                    <span class="signal ${fatSignal}">G ${fmtNumber(food.fat_g)}g</span>
+                  </p>
+                  <p class="nutrition-food-signals">
+                    <span class="signal ${nutrientSignalClass(food.fat_good_g, 8)}">Gord. boa ${fmtNumber(food.fat_good_g)}g</span>
+                    <span class="signal ${fatBadSignal}">Gord. ruim ${fmtNumber(food.fat_bad_g)}g</span>
+                    <span class="signal ${sodiumSignal}">Sódio ${fmtNumber(food.sodium_mg, 0)} mg</span>
+                    <span class="signal ${sugarSignal}">Açúcar ${fmtNumber(food.sugar_g, 1)} g</span>
+                  </p>
+                  <p class="nutrition-food-signals">
+                    <span class="signal ${proteinSignal}">P ${fmtNumber(contributionPct(food.protein_g, totalProtein), 0)}%</span>
+                    <span class="signal ${carbsSignal}">C ${fmtNumber(contributionPct(food.carbs_g, totalCarbs), 0)}%</span>
+                    <span class="signal ${fatSignal}">G ${fmtNumber(contributionPct(food.fat_g, totalFat), 0)}%</span>
+                  </p>
+                  ${impactLine}
+                  <p class="nutrition-food-meta">Porção: ${escapeHtml(food.portion || "não informada")}</p>
+                  <p class="nutrition-food-meta">${escapeHtml(food.reason || "sem observação")}</p>
+                  <p class="nutrition-food-meta"><strong>Alternativas melhores:</strong> ${escapeHtml(foodBetterAlternatives(food))}</p>
+                </article>
+              `;
+            }).join("")}
           </div>
         `
         : `<p class="muted">Sem itens detalhados nesta refeição.</p>`;
@@ -1366,9 +2183,20 @@ function renderNutritionDashboard() {
         <article class="nutrition-entry-card">
           <header class="nutrition-entry-header">
             <strong>${fmtDateTime(entry.recorded_at)}</strong>
-            <span class="tag ${qualityClass(quality)}">${escapeHtml(quality)}</span>
+            <span class="tag ${qualityClass(quality)}">${escapeHtml(qualityLabel(quality))}</span>
           </header>
           <p class="nutrition-entry-text">${escapeHtml(summary)}</p>
+          <p class="nutrition-food-meta"><strong>Macros:</strong> ${fmtNumber(entry.estimated_calories, 0)} kcal</p>
+          <p class="nutrition-food-signals">
+            <span class="signal ${entryProteinStatus.signalClass}">P ${fmtNumber(entry.estimated_protein_g)}g</span>
+            <span class="signal ${entryCarbsStatus.signalClass}">C ${fmtNumber(entry.estimated_carbs_g)}g</span>
+            <span class="signal ${entryFatStatus.signalClass}">G ${fmtNumber(entry.estimated_fat_g)}g</span>
+          </p>
+          <p class="nutrition-food-signals">
+            <span class="signal ${entryFatGoodStatus.signalClass}">Gord. boa ${fmtNumber(entryFatGood)}g</span>
+            <span class="signal ${entryFatBadStatus.signalClass}">Gord. ruim ${fmtNumber(entryFatBad)}g</span>
+          </p>
+          <p class="nutrition-food-meta"><strong>Sinais IA:</strong> Sódio ${risk.sodium_alert ? "atenção" : "ok"} | Açúcar ${risk.sugar_alert ? "atenção" : "ok"}</p>
           ${foodDetails}
           ${
             entry.recommended_action
@@ -1456,7 +2284,7 @@ function renderHistories() {
     <article class="history-item">
       <header>
         <strong>${fmtDateTime(item.recorded_at)}</strong>
-        <span class="tag ${qualityClass(item.meal_quality)}">${escapeHtml(item.meal_quality || "-")}</span>
+        <span class="tag ${qualityClass(item.meal_quality)}">${escapeHtml(qualityLabel(item.meal_quality || "-"))}</span>
       </header>
       <p>${escapeHtml(item.analyzed_summary || "Sem resumo")}</p>
       <p class="muted">Calorias: ${fmtNumber(item.estimated_calories, 0)} | Proteína: ${fmtNumber(item.estimated_protein_g)} g</p>
@@ -2005,44 +2833,76 @@ function setupDateFilter() {
   const fromInput = document.getElementById("filter-from");
   const toInput = document.getElementById("filter-to");
   const clearButton = document.getElementById("clear-date-filter");
+  const prevDayButton = document.getElementById("filter-prev-day");
+  const nextDayButton = document.getElementById("filter-next-day");
 
   if (!form || !fromInput || !toInput || !clearButton) return;
 
   const today = todayInputValue();
-  fromInput.value = today;
-  toInput.value = today;
-  state.filter.from = today;
-  state.filter.to = today;
+  const initialRange = normalizeFilterRange(today, today, today);
+  fromInput.value = initialRange.from;
+  toInput.value = initialRange.to;
+  state.filter.from = initialRange.from;
+  state.filter.to = initialRange.to;
+
+  async function applyFilterAndRefresh(loadingMessage, successMessage, errorPrefix) {
+    try {
+      setStatus(loadingMessage, "info");
+      await refreshAllWithStatus(successMessage);
+    } catch (err) {
+      setStatus(`${errorPrefix}: ${err.message}`, "error");
+    }
+  }
+
+  function syncFilterStateFromInputs() {
+    const fallbackDate = todayInputValue();
+    const normalized = normalizeFilterRange(fromInput.value, toInput.value, fallbackDate);
+    fromInput.value = normalized.from;
+    toInput.value = normalized.to;
+    state.filter.from = normalized.from;
+    state.filter.to = normalized.to;
+  }
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const fallbackDate = todayInputValue();
-    state.filter.from = fromInput.value || toInput.value || fallbackDate;
-    state.filter.to = toInput.value || fromInput.value || fallbackDate;
-    fromInput.value = state.filter.from;
-    toInput.value = state.filter.to;
-
-    try {
-      setStatus("Aplicando filtro de data...", "info");
-      await refreshAllWithStatus("Filtro aplicado.");
-    } catch (err) {
-      setStatus(`Erro ao aplicar filtro: ${err.message}`, "error");
-    }
+    syncFilterStateFromInputs();
+    await applyFilterAndRefresh("Aplicando filtro de data...", "Filtro aplicado.", "Erro ao aplicar filtro");
   });
 
   clearButton.addEventListener("click", async () => {
     const fallbackDate = todayInputValue();
-    fromInput.value = fallbackDate;
-    toInput.value = fallbackDate;
-    state.filter.from = fallbackDate;
-    state.filter.to = fallbackDate;
+    const normalized = normalizeFilterRange(fallbackDate, fallbackDate, fallbackDate);
+    fromInput.value = normalized.from;
+    toInput.value = normalized.to;
+    state.filter.from = normalized.from;
+    state.filter.to = normalized.to;
+    await applyFilterAndRefresh("Voltando filtro para hoje...", "Filtro de hoje aplicado.", "Erro ao aplicar hoje");
+  });
 
-    try {
-      setStatus("Voltando filtro para hoje...", "info");
-      await refreshAllWithStatus("Filtro de hoje aplicado.");
-    } catch (err) {
-      setStatus(`Erro ao aplicar hoje: ${err.message}`, "error");
-    }
+  function moveFilterByDays(days) {
+    const fallbackDate = todayInputValue();
+    const normalized = normalizeFilterRange(fromInput.value, toInput.value, fallbackDate);
+    const shiftedFrom = shiftDateInputValue(normalized.from, days);
+    const shiftedTo = shiftDateInputValue(normalized.to, days);
+    const shiftedRange = normalizeFilterRange(shiftedFrom, shiftedTo, fallbackDate);
+
+    fromInput.value = shiftedRange.from;
+    toInput.value = shiftedRange.to;
+    state.filter.from = shiftedRange.from;
+    state.filter.to = shiftedRange.to;
+    updateFilterSummary();
+  }
+
+  prevDayButton?.addEventListener("click", async (event) => {
+    event.preventDefault();
+    moveFilterByDays(-1);
+    await applyFilterAndRefresh("Abrindo dia anterior...", "Dia anterior aplicado.", "Erro ao abrir dia anterior");
+  });
+
+  nextDayButton?.addEventListener("click", async (event) => {
+    event.preventDefault();
+    moveFilterByDays(1);
+    await applyFilterAndRefresh("Abrindo próximo dia...", "Próximo dia aplicado.", "Erro ao abrir próximo dia");
   });
 
   updateFilterSummary();
