@@ -44,8 +44,10 @@ const {
 } = require("../services/trackingDataService");
 const {
   saveUploadedFile,
-  localToWebFileUrl,
+  normalizeIncomingFileUrl,
+  toFileOpenUrl,
   deleteUploadedFileByUrl,
+  resolveFileUrlForAccess,
 } = require("../services/attachmentStorageService");
 const { generateAndStoreReport, listReports } = require("../services/reportService");
 const { getDashboardOverview } = require("../services/dashboardService");
@@ -54,7 +56,7 @@ const {
   analyzeBioimpedanceImage,
   analyzeMedicalExamText,
   analyzeMedicalExamImage,
-  extractPdfText,
+  extractPdfTextFromBuffer,
   markersArrayToObject,
   isPdfMime,
   isImageMime,
@@ -75,15 +77,42 @@ function toLimit(value, fallback = 30, max = 200) {
   return Math.min(parsed, max);
 }
 
-function normalizeStoredFileUrl(fileUrl) {
-  if (!fileUrl) return null;
-  return localToWebFileUrl(fileUrl);
+function normalizeStoredFileUrlForResponse(fileUrl) {
+  const normalized = normalizeIncomingFileUrl(fileUrl);
+  return toFileOpenUrl(normalized);
+}
+
+function normalizeStoredFileUrlForStorage(fileUrl) {
+  return normalizeIncomingFileUrl(fileUrl);
 }
 
 function extractUploadUrlFromNotes(notes) {
   const raw = String(notes || "");
-  const match = raw.match(/(\/uploads\/[^\s|]+)/i);
-  return match ? match[1] : "";
+  const markerMatch = raw.match(/\[file_ref:([^\]]+)\]/i);
+  if (markerMatch?.[1]) {
+    return normalizeStoredFileUrlForStorage(markerMatch[1]);
+  }
+
+  const match = raw.match(/(supabase:\/\/[^\s|]+|local:\/\/temp\/uploads\/[^\s|]+|\/uploads\/[^\s|]+)/i);
+  return normalizeStoredFileUrlForStorage(match ? match[1] : "");
+}
+
+function withFileRefMarker(notes, fileUrl) {
+  const cleanNotes = String(notes || "")
+    .replace(/\s*\[file_ref:[^\]]+\]\s*/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const canonical = normalizeStoredFileUrlForStorage(fileUrl);
+  if (!canonical) return cleanNotes;
+  if (!cleanNotes) return `[file_ref:${canonical}]`;
+  return `${cleanNotes} [file_ref:${canonical}]`;
+}
+
+function stripFileRefMarker(notes) {
+  return String(notes || "")
+    .replace(/\s*\[file_ref:[^\]]+\]\s*/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function normalizeRecordedAt(value) {
@@ -461,8 +490,18 @@ const userGoalListController = asyncHandler(async (req, res) => {
 
 const bodyMeasurementCreateController = asyncHandler(async (req, res) => {
   const userId = await resolveRequestUserId(req);
-  const measurement = await createBodyMeasurement({ userId, ...req.body });
-  return res.status(201).json({ ok: true, measurement });
+  const measurement = await createBodyMeasurement({
+    userId,
+    ...req.body,
+    progress_photo_url: normalizeStoredFileUrlForStorage(req.body.progress_photo_url),
+  });
+  return res.status(201).json({
+    ok: true,
+    measurement: {
+      ...measurement,
+      progress_photo_url: normalizeStoredFileUrlForResponse(measurement.progress_photo_url),
+    },
+  });
 });
 
 const bodyMeasurementProgressPhotoUploadController = asyncHandler(async (req, res) => {
@@ -477,7 +516,7 @@ const bodyMeasurementProgressPhotoUploadController = asyncHandler(async (req, re
     return res.status(400).json({ ok: false, error: "Envie uma imagem valida (jpg/png/webp)." });
   }
 
-  const storedFile = await saveUploadedFile(file);
+  const storedFile = await saveUploadedFile(file, { folder: "progress-photos" });
   const measurement = await createBodyMeasurement({
     userId,
     weight_kg: req.body.weight_kg,
@@ -489,18 +528,27 @@ const bodyMeasurementProgressPhotoUploadController = asyncHandler(async (req, re
     arm_cm: req.body.arm_cm,
     thigh_cm: req.body.thigh_cm,
     calf_cm: req.body.calf_cm,
-    progress_photo_url: storedFile.webFileUrl,
-    notes: req.body.notes || `Foto de evolucao enviada via web (${storedFile.webFileUrl})`,
+    progress_photo_url: storedFile.fileUrl,
+    notes: withFileRefMarker(
+      req.body.notes || "Foto de evolucao enviada via web.",
+      storedFile.fileUrl
+    ),
     recorded_at: normalizeRecordedAt(req.body.recorded_at),
   });
 
   return res.status(201).json({
     ok: true,
-    measurement,
+    measurement: {
+      ...measurement,
+      progress_photo_url: normalizeStoredFileUrlForResponse(measurement.progress_photo_url),
+      notes: stripFileRefMarker(measurement.notes),
+    },
     file: {
       url: storedFile.webFileUrl,
+      canonicalUrl: storedFile.fileUrl,
       localUrl: storedFile.localFileUrl,
       webUrl: storedFile.webFileUrl,
+      provider: storedFile.storageProvider,
       mimeType: storedFile.mimeType,
       size: storedFile.size,
       originalSize: storedFile.originalSize,
@@ -516,7 +564,12 @@ const bodyMeasurementListController = asyncHandler(async (req, res) => {
     to: normalizeDateFilter(req.query.to, "to"),
     limit: toLimit(req.query.limit, 30, 120),
   });
-  return res.json({ ok: true, measurements });
+  const normalized = measurements.map((measurement) => ({
+    ...measurement,
+    progress_photo_url: normalizeStoredFileUrlForResponse(measurement.progress_photo_url),
+    notes: stripFileRefMarker(measurement.notes),
+  }));
+  return res.json({ ok: true, measurements: normalized });
 });
 
 const bioimpedanceCreateController = asyncHandler(async (req, res) => {
@@ -532,7 +585,15 @@ const bioimpedanceListController = asyncHandler(async (req, res) => {
     to: normalizeDateFilter(req.query.to, "to"),
     limit: toLimit(req.query.limit, 30, 120),
   });
-  return res.json({ ok: true, records });
+  const normalized = records.map((record) => {
+    const fileRef = extractUploadUrlFromNotes(record.notes);
+    return {
+      ...record,
+      attachment_url: normalizeStoredFileUrlForResponse(fileRef),
+      notes: stripFileRefMarker(record.notes),
+    };
+  });
+  return res.json({ ok: true, records: normalized });
 });
 
 const medicalExamCreateController = asyncHandler(async (req, res) => {
@@ -545,10 +606,16 @@ const medicalExamCreateController = asyncHandler(async (req, res) => {
     userId,
     ...req.body,
     exam_date: normalizeRecordedAt(req.body.exam_date),
-    file_url: normalizeStoredFileUrl(req.body.file_url),
+    file_url: normalizeStoredFileUrlForStorage(req.body.file_url),
   });
 
-  return res.status(201).json({ ok: true, exam });
+  return res.status(201).json({
+    ok: true,
+    exam: {
+      ...exam,
+      file_url: normalizeStoredFileUrlForResponse(exam.file_url),
+    },
+  });
 });
 
 function normalizeOpenAiError(err) {
@@ -588,7 +655,7 @@ const bioimpedanceUploadController = asyncHandler(async (req, res) => {
     return res.status(400).json({ ok: false, error: "Arquivo obrigatorio (campo file)" });
   }
 
-  const storedFile = await saveUploadedFile(file);
+  const storedFile = await saveUploadedFile(file, { folder: "bioimpedance" });
   const recordedAt = normalizeRecordedAt(req.body.recorded_at);
 
   if (!isImageMime(storedFile.mimeType, file.originalname)) {
@@ -618,12 +685,15 @@ const bioimpedanceUploadController = asyncHandler(async (req, res) => {
       metabolic_age: parsed.metabolic_age,
       lean_mass_kg: parsed.fat_free_mass_kg,
       recorded_at: effectiveRecordedAt,
-      notes: [
-        `Fonte arquivo: ${storedFile.webFileUrl}`,
-        `Resumo IA: ${parsed.source_summary}`,
-        `IMC: ${parsed.bmi ?? "n/d"} | WHR: ${parsed.whr ?? "n/d"}`,
-        `Tipo corpo: ${parsed.body_type_text || "n/d"} | Nivel obesidade: ${parsed.obesity_level_text || "n/d"}`,
-      ].join(" | "),
+      notes: withFileRefMarker(
+        [
+          "Fonte arquivo: anexo recebido",
+          `Resumo IA: ${parsed.source_summary}`,
+          `IMC: ${parsed.bmi ?? "n/d"} | WHR: ${parsed.whr ?? "n/d"}`,
+          `Tipo corpo: ${parsed.body_type_text || "n/d"} | Nivel obesidade: ${parsed.obesity_level_text || "n/d"}`,
+        ].join(" | "),
+        storedFile.fileUrl
+      ),
     });
 
     let bodyMeasurement = null;
@@ -632,8 +702,12 @@ const bioimpedanceUploadController = asyncHandler(async (req, res) => {
         userId,
         weight_kg: parsed.weight_kg,
         body_fat_pct: parsed.body_fat_pct,
+        progress_photo_url: storedFile.fileUrl,
         recorded_at: effectiveRecordedAt,
-        notes: `Registro automatico via anexo bioimpedancia (${storedFile.webFileUrl})`,
+        notes: withFileRefMarker(
+          "Registro automatico via anexo bioimpedancia.",
+          storedFile.fileUrl
+        ),
       });
     }
 
@@ -649,13 +723,25 @@ const bioimpedanceUploadController = asyncHandler(async (req, res) => {
     return res.status(201).json({
       ok: true,
       analyzed: true,
-      record,
-      body_measurement: bodyMeasurement,
+      record: {
+        ...record,
+        attachment_url: normalizeStoredFileUrlForResponse(storedFile.fileUrl),
+        notes: stripFileRefMarker(record.notes),
+      },
+      body_measurement: bodyMeasurement
+        ? {
+            ...bodyMeasurement,
+            progress_photo_url: normalizeStoredFileUrlForResponse(bodyMeasurement.progress_photo_url),
+            notes: stripFileRefMarker(bodyMeasurement.notes),
+          }
+        : null,
       parsed,
       file: {
         url: storedFile.webFileUrl,
+        canonicalUrl: storedFile.fileUrl,
         localUrl: storedFile.localFileUrl,
         webUrl: storedFile.webFileUrl,
+        provider: storedFile.storageProvider,
         mimeType: storedFile.mimeType,
         size: storedFile.size,
         originalSize: storedFile.originalSize,
@@ -681,8 +767,10 @@ const bioimpedanceUploadController = asyncHandler(async (req, res) => {
       message: info.userMessage,
       file: {
         url: storedFile.webFileUrl,
+        canonicalUrl: storedFile.fileUrl,
         localUrl: storedFile.localFileUrl,
         webUrl: storedFile.webFileUrl,
+        provider: storedFile.storageProvider,
         mimeType: storedFile.mimeType,
         size: storedFile.size,
         originalSize: storedFile.originalSize,
@@ -700,7 +788,7 @@ const medicalExamUploadController = asyncHandler(async (req, res) => {
     return res.status(400).json({ ok: false, error: "Arquivo obrigatorio (campo file)" });
   }
 
-  const storedFile = await saveUploadedFile(file);
+  const storedFile = await saveUploadedFile(file, { folder: "medical-exams" });
   const baseExamName = req.body.exam_name || "Exame anexado";
   const baseExamType = req.body.exam_type || "anexo";
   const baseExamDate = normalizeRecordedAt(req.body.exam_date);
@@ -713,7 +801,7 @@ const medicalExamUploadController = asyncHandler(async (req, res) => {
     let ai = null;
 
     if (isPdfMime(storedFile.mimeType, file.originalname)) {
-      const extractedText = await extractPdfText(storedFile.absolutePath);
+      const extractedText = await extractPdfTextFromBuffer(file.buffer);
       ai = await analyzeMedicalExamText({
         rawText: extractedText,
         modelOverride: examUploadTextModel,
@@ -731,14 +819,21 @@ const medicalExamUploadController = asyncHandler(async (req, res) => {
         exam_type: baseExamType,
         exam_date: baseExamDate,
         markers: {},
-        file_url: storedFile.webFileUrl,
-        notes: "Arquivo salvo, formato nao suportado para analise IA automatica.",
+        file_url: storedFile.fileUrl,
+        notes: withFileRefMarker(
+          "Arquivo salvo, formato nao suportado para analise IA automatica.",
+          storedFile.fileUrl
+        ),
       });
 
       return res.status(201).json({
         ok: true,
         analyzed: false,
-        exam,
+        exam: {
+          ...exam,
+          file_url: normalizeStoredFileUrlForResponse(exam.file_url),
+          notes: stripFileRefMarker(exam.notes),
+        },
         warning: "Formato sem analise IA automatica. Use PDF ou imagem.",
       });
     }
@@ -752,8 +847,11 @@ const medicalExamUploadController = asyncHandler(async (req, res) => {
       exam_type: parsed.exam_type || baseExamType,
       exam_date: normalizeRecordedAt(parsed.exam_date) || baseExamDate,
       markers: markersObj,
-      file_url: storedFile.webFileUrl,
-      notes: [parsed.summary, ...(parsed.risk_flags || []).map((item) => `Risco: ${item}`)].join(" | "),
+      file_url: storedFile.fileUrl,
+      notes: withFileRefMarker(
+        [parsed.summary, ...(parsed.risk_flags || []).map((item) => `Risco: ${item}`)].join(" | "),
+        storedFile.fileUrl
+      ),
     });
 
     await saveAiInteraction({
@@ -768,12 +866,18 @@ const medicalExamUploadController = asyncHandler(async (req, res) => {
     return res.status(201).json({
       ok: true,
       analyzed: true,
-      exam,
+      exam: {
+        ...exam,
+        file_url: normalizeStoredFileUrlForResponse(exam.file_url),
+        notes: stripFileRefMarker(exam.notes),
+      },
       parsed,
       file: {
         url: storedFile.webFileUrl,
+        canonicalUrl: storedFile.fileUrl,
         localUrl: storedFile.localFileUrl,
         webUrl: storedFile.webFileUrl,
+        provider: storedFile.storageProvider,
         mimeType: storedFile.mimeType,
         size: storedFile.size,
         originalSize: storedFile.originalSize,
@@ -789,8 +893,8 @@ const medicalExamUploadController = asyncHandler(async (req, res) => {
       exam_type: baseExamType,
       exam_date: baseExamDate,
       markers: {},
-      file_url: storedFile.webFileUrl,
-      notes: `Arquivo salvo sem analise IA. Motivo: ${err.message}`,
+      file_url: storedFile.fileUrl,
+      notes: withFileRefMarker(`Arquivo salvo sem analise IA. Motivo: ${err.message}`, storedFile.fileUrl),
     });
 
     await saveAiInteraction({
@@ -807,7 +911,11 @@ const medicalExamUploadController = asyncHandler(async (req, res) => {
       analyzed: false,
       reason: info.reason,
       message: info.userMessage,
-      exam: fallbackExam,
+      exam: {
+        ...fallbackExam,
+        file_url: normalizeStoredFileUrlForResponse(fallbackExam.file_url),
+        notes: stripFileRefMarker(fallbackExam.notes),
+      },
     });
   }
 });
@@ -822,7 +930,8 @@ const medicalExamListController = asyncHandler(async (req, res) => {
 
   const normalized = exams.map((exam) => ({
     ...exam,
-    file_url: normalizeStoredFileUrl(exam.file_url),
+    file_url: normalizeStoredFileUrlForResponse(exam.file_url),
+    notes: stripFileRefMarker(exam.notes),
   }));
 
   return res.json({ ok: true, exams: normalized });
@@ -862,7 +971,7 @@ const medicalExamUpdateController = asyncHandler(async (req, res) => {
   }
 
   if (Object.prototype.hasOwnProperty.call(req.body || {}, "file_url")) {
-    patch.file_url = normalizeStoredFileUrl(req.body.file_url);
+    patch.file_url = normalizeStoredFileUrlForStorage(req.body.file_url);
   }
 
   if (Object.prototype.hasOwnProperty.call(req.body || {}, "markers")) {
@@ -882,7 +991,8 @@ const medicalExamUpdateController = asyncHandler(async (req, res) => {
     ok: true,
     exam: {
       ...exam,
-      file_url: normalizeStoredFileUrl(exam.file_url),
+      file_url: normalizeStoredFileUrlForResponse(exam.file_url),
+      notes: stripFileRefMarker(exam.notes),
     },
   });
 });
@@ -1450,6 +1560,25 @@ const systemUsageController = asyncHandler(async (req, res) => {
   return res.json({ ok: true, usage });
 });
 
+const fileOpenController = asyncHandler(async (req, res) => {
+  const fileUrl = String(req.query?.file_url || "").trim();
+  if (!fileUrl) {
+    return res.status(400).json({ ok: false, error: "file_url obrigatorio" });
+  }
+
+  const normalized = normalizeStoredFileUrlForStorage(fileUrl);
+  if (!normalized || !/^(supabase:\/\/|local:\/\/temp\/uploads\/)/i.test(normalized)) {
+    return res.status(400).json({ ok: false, error: "file_url invalido para abertura segura" });
+  }
+
+  const redirectTo = await resolveFileUrlForAccess(normalized);
+  if (!redirectTo) {
+    return res.status(404).json({ ok: false, error: "Arquivo nao encontrado" });
+  }
+
+  return res.redirect(302, redirectTo);
+});
+
 const aiInfoController = asyncHandler(async (req, res) => {
   const userId = await resolveRequestUserId(req);
   const persona = getPersonaDocument();
@@ -1571,6 +1700,7 @@ module.exports = {
   aiInfoController,
   aiSettingsUpdateController,
   systemUsageController,
+  fileOpenController,
   reportGenerateController,
   reportListController,
   dashboardOverviewController,

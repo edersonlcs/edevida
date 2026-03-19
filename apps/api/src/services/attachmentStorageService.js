@@ -2,6 +2,16 @@ const fs = require("fs/promises");
 const path = require("path");
 const { randomUUID } = require("crypto");
 const sharp = require("sharp");
+const { supabase } = require("../integrations/supabaseClient");
+const { cfg } = require("../config/env");
+
+const LOCAL_PREFIX = "local://temp/uploads/";
+const SUPABASE_PREFIX = "supabase://";
+
+const bucketCache = {
+  name: "",
+  checkedAt: 0,
+};
 
 function sanitizeFileName(name) {
   return String(name || "upload.bin")
@@ -32,20 +42,28 @@ async function ensureUploadDir() {
   return uploadDir;
 }
 
-function localToWebFileUrl(localFileUrl) {
-  const prefix = "local://temp/uploads/";
-  if (!String(localFileUrl || "").startsWith(prefix)) return localFileUrl;
-  const fileName = localFileUrl.slice(prefix.length);
-  return `/uploads/${fileName}`;
+function getStorageBucketName() {
+  return String(cfg.supabaseStorageBucket || "").trim() || "edevida-private";
 }
 
-function extractUploadFileName(fileUrl) {
+function isSupabaseStorageEnabled() {
+  return Boolean(cfg.supabaseStorageEnabled && cfg.supabaseUrl && cfg.supabaseServiceRoleKey && getStorageBucketName());
+}
+
+function asLocalCanonicalUrl(fileName) {
+  return `${LOCAL_PREFIX}${fileName}`;
+}
+
+function asSupabaseCanonicalUrl(bucket, objectPath) {
+  return `${SUPABASE_PREFIX}${bucket}/${objectPath}`;
+}
+
+function extractLocalFileNameFromUrl(fileUrl) {
   const raw = String(fileUrl || "").trim();
   if (!raw) return "";
 
-  const localPrefix = "local://temp/uploads/";
-  if (raw.startsWith(localPrefix)) {
-    return path.basename(raw.slice(localPrefix.length));
+  if (raw.startsWith(LOCAL_PREFIX)) {
+    return path.basename(raw.slice(LOCAL_PREFIX.length));
   }
 
   if (raw.startsWith("/uploads/")) {
@@ -65,8 +83,79 @@ function extractUploadFileName(fileUrl) {
   return "";
 }
 
+function parseSupabaseCanonicalUrl(fileUrl) {
+  const raw = String(fileUrl || "").trim();
+  if (!raw.startsWith(SUPABASE_PREFIX)) return null;
+
+  const value = raw.slice(SUPABASE_PREFIX.length);
+  const slashIdx = value.indexOf("/");
+  if (slashIdx <= 0) return null;
+
+  const bucket = value.slice(0, slashIdx).trim();
+  const objectPath = value.slice(slashIdx + 1).trim();
+  if (!bucket || !objectPath) return null;
+
+  return { bucket, objectPath };
+}
+
+function normalizeIncomingFileUrl(fileUrl) {
+  const raw = String(fileUrl || "").trim();
+  if (!raw) return null;
+
+  if (raw.startsWith("/api/files/open?")) {
+    const query = raw.split("?")[1] || "";
+    const params = new URLSearchParams(query);
+    const nested = params.get("file_url");
+    if (nested) return normalizeIncomingFileUrl(nested);
+  }
+
+  try {
+    const parsed = new URL(raw);
+    if (parsed.pathname === "/api/files/open") {
+      const nested = parsed.searchParams.get("file_url");
+      if (nested) return normalizeIncomingFileUrl(nested);
+    }
+  } catch {
+    // ignore invalid absolute URL
+  }
+
+  const supa = parseSupabaseCanonicalUrl(raw);
+  if (supa) {
+    return asSupabaseCanonicalUrl(supa.bucket, supa.objectPath);
+  }
+
+  const localFileName = extractLocalFileNameFromUrl(raw);
+  if (localFileName) {
+    return asLocalCanonicalUrl(localFileName);
+  }
+
+  return raw;
+}
+
+function isCanonicalInternalFileUrl(fileUrl) {
+  const raw = String(fileUrl || "").trim();
+  return raw.startsWith(LOCAL_PREFIX) || raw.startsWith(SUPABASE_PREFIX);
+}
+
+function toFileOpenUrl(fileUrl) {
+  const canonical = normalizeIncomingFileUrl(fileUrl);
+  if (!canonical) return null;
+
+  if (isCanonicalInternalFileUrl(canonical)) {
+    return `/api/files/open?file_url=${encodeURIComponent(canonical)}`;
+  }
+
+  return canonical;
+}
+
+function localToWebFileUrl(localFileUrl) {
+  const localFileName = extractLocalFileNameFromUrl(localFileUrl);
+  if (!localFileName) return localFileUrl;
+  return `/uploads/${localFileName}`;
+}
+
 function uploadUrlToAbsolutePath(fileUrl) {
-  const fileName = extractUploadFileName(fileUrl);
+  const fileName = extractLocalFileNameFromUrl(fileUrl);
   if (!fileName) return null;
   const uploadDir = getUploadDir();
   const absolutePath = path.resolve(uploadDir, fileName);
@@ -74,8 +163,54 @@ function uploadUrlToAbsolutePath(fileUrl) {
   return absolutePath;
 }
 
+async function ensureSupabaseBucket() {
+  if (!isSupabaseStorageEnabled()) return;
+
+  const bucketName = getStorageBucketName();
+  const now = Date.now();
+  if (bucketCache.name === bucketName && now - bucketCache.checkedAt < 5 * 60 * 1000) {
+    return;
+  }
+
+  const { data, error } = await supabase.storage.getBucket(bucketName);
+  if (error || !data) {
+    const message = String(error?.message || "");
+    const notFound = /not\s*found|does not exist|404/i.test(message);
+
+    if (!notFound) {
+      throw new Error(`Erro ao validar bucket '${bucketName}': ${message || "desconhecido"}`);
+    }
+
+    const { error: createError } = await supabase.storage.createBucket(bucketName, {
+      public: false,
+    });
+
+    if (createError) {
+      const createMessage = String(createError.message || "");
+      if (!/already exists|duplicate/i.test(createMessage)) {
+        throw new Error(`Erro ao criar bucket '${bucketName}': ${createMessage || "desconhecido"}`);
+      }
+    }
+  }
+
+  bucketCache.name = bucketName;
+  bucketCache.checkedAt = now;
+}
+
 async function deleteUploadedFileByUrl(fileUrl) {
-  const absolutePath = uploadUrlToAbsolutePath(fileUrl);
+  const normalized = normalizeIncomingFileUrl(fileUrl);
+  if (!normalized) return false;
+
+  const supa = parseSupabaseCanonicalUrl(normalized);
+  if (supa) {
+    const { error } = await supabase.storage.from(supa.bucket).remove([supa.objectPath]);
+    if (error && !/not\s*found|404/i.test(String(error.message || ""))) {
+      throw new Error(`Erro ao remover arquivo do Supabase Storage: ${error.message}`);
+    }
+    return !error;
+  }
+
+  const absolutePath = uploadUrlToAbsolutePath(normalized);
   if (!absolutePath) return false;
 
   try {
@@ -87,6 +222,30 @@ async function deleteUploadedFileByUrl(fileUrl) {
     }
     throw err;
   }
+}
+
+async function resolveFileUrlForAccess(fileUrl, options = {}) {
+  const normalized = normalizeIncomingFileUrl(fileUrl);
+  if (!normalized) return null;
+
+  const supa = parseSupabaseCanonicalUrl(normalized);
+  if (supa) {
+    const ttl = Number(options.ttlSeconds || cfg.supabaseStorageSignedUrlTtlSeconds || 900);
+    const expiresIn = Number.isFinite(ttl) && ttl > 0 ? Math.min(Math.round(ttl), 60 * 60 * 24) : 900;
+
+    const { data, error } = await supabase.storage.from(supa.bucket).createSignedUrl(supa.objectPath, expiresIn);
+    if (error || !data?.signedUrl) {
+      throw new Error(`Erro ao gerar URL assinada do anexo: ${error?.message || "sem signedUrl"}`);
+    }
+
+    return data.signedUrl;
+  }
+
+  if (normalized.startsWith(LOCAL_PREFIX) || normalized.startsWith("/uploads/")) {
+    return localToWebFileUrl(normalized);
+  }
+
+  return normalized;
 }
 
 async function optimizeImageIfPossible(file) {
@@ -133,25 +292,58 @@ async function optimizeImageIfPossible(file) {
   }
 }
 
-async function saveUploadedFile(file) {
-  if (!file?.buffer || !file.originalname) {
-    throw new Error("Arquivo invalido para upload");
+async function saveToSupabaseStorage(file, optimized, { folder = "anexos" } = {}) {
+  await ensureSupabaseBucket();
+
+  const bucketName = getStorageBucketName();
+  const baseName = sanitizeFileName(file.originalname).replace(/\.[^.]+$/, "");
+  const extension = optimized.extension || ".bin";
+  const datePart = new Date().toISOString().slice(0, 10);
+  const objectPath = `${folder}/${datePart}/${Date.now()}-${randomUUID()}-${baseName}${extension}`;
+
+  const { error } = await supabase.storage.from(bucketName).upload(objectPath, optimized.buffer, {
+    contentType: optimized.mimeType || file.mimetype || "application/octet-stream",
+    upsert: false,
+  });
+
+  if (error) {
+    throw new Error(`Erro ao salvar anexo no Supabase Storage: ${error.message}`);
   }
 
+  const canonicalFileUrl = asSupabaseCanonicalUrl(bucketName, objectPath);
+
+  return {
+    absolutePath: null,
+    localFileUrl: null,
+    fileUrl: canonicalFileUrl,
+    webFileUrl: toFileOpenUrl(canonicalFileUrl),
+    storageProvider: "supabase",
+    bucket: bucketName,
+    objectPath,
+    fileName: path.basename(objectPath),
+    mimeType: optimized.mimeType || file.mimetype || "application/octet-stream",
+    size: optimized.buffer.length,
+    originalSize: file.size || file.buffer.length,
+    optimized: optimized.optimized,
+  };
+}
+
+async function saveToLocalStorage(file, optimized) {
   const uploadDir = await ensureUploadDir();
-  const optimized = await optimizeImageIfPossible(file);
   const baseName = sanitizeFileName(file.originalname).replace(/\.[^.]+$/, "");
   const extension = optimized.extension || ".bin";
   const fileName = `${Date.now()}-${randomUUID()}-${baseName}${extension}`;
   const absolutePath = path.join(uploadDir, fileName);
 
   await fs.writeFile(absolutePath, optimized.buffer);
-  const localFileUrl = `local://temp/uploads/${fileName}`;
+  const localFileUrl = asLocalCanonicalUrl(fileName);
 
   return {
     absolutePath,
     localFileUrl,
-    webFileUrl: localToWebFileUrl(localFileUrl),
+    fileUrl: localFileUrl,
+    webFileUrl: toFileOpenUrl(localFileUrl),
+    storageProvider: "local",
     fileName,
     mimeType: optimized.mimeType || file.mimetype || "application/octet-stream",
     size: optimized.buffer.length,
@@ -160,10 +352,29 @@ async function saveUploadedFile(file) {
   };
 }
 
+async function saveUploadedFile(file, options = {}) {
+  if (!file?.buffer || !file.originalname) {
+    throw new Error("Arquivo invalido para upload");
+  }
+
+  const optimized = await optimizeImageIfPossible(file);
+
+  if (isSupabaseStorageEnabled()) {
+    return saveToSupabaseStorage(file, optimized, options);
+  }
+
+  return saveToLocalStorage(file, optimized);
+}
+
 module.exports = {
   saveUploadedFile,
-  localToWebFileUrl,
   getUploadDir,
+  localToWebFileUrl,
   uploadUrlToAbsolutePath,
+  normalizeIncomingFileUrl,
+  toFileOpenUrl,
   deleteUploadedFileByUrl,
+  resolveFileUrlForAccess,
+  isSupabaseStorageEnabled,
+  getStorageBucketName,
 };

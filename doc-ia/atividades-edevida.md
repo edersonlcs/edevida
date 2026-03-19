@@ -404,13 +404,25 @@ Antes de codar, vamos confirmar que o app tera espaco para os dados que voce que
 - Historico exibido em listas visuais para: medidas, bioimpedancia, exames, hidratacao, treinos e alimentacao.
 - Botao de relatorio diario agora atualiza lista visivel no painel (sem ficar "invisivel").
 - Upload de anexos com compressao automatica de imagem no backend para economizar espaco.
-- Arquivos anexados ficam salvos em `temp/uploads` e expostos em URL web via `/uploads/...`.
+- Fluxo de anexos atualizado para modo stateless:
+  - persistencia principal em Supabase Storage privado (bucket `edevida-private`, configuravel);
+  - banco guarda referencia canonica (`supabase://bucket/caminho`);
+  - abertura no web via `GET /api/files/open?file_url=...` com URL assinada sob demanda.
+- Fallback local mantido para contingencia em `temp/uploads`.
 - Links de anexo de exames aparecem no historico para abrir direto no navegador.
 - Tratamento melhor de erro de upload grande (retorno claro para limite de 25 MB).
 - Fallback automatico de modelos OpenAI implementado:
   - texto/visao: tenta modelo configurado e, se indisponivel, cai para `gpt-4.1-mini` e `gpt-4o-mini`;
   - transcricao: fallback para `gpt-4o-mini-transcribe` e `gpt-4o-transcribe`.
 - Recomendacao de seguranca aplicada no Git: `temp/` ignorado por padrao para evitar commit de arquivos pessoais.
+
+Variaveis novas para o fluxo de Storage:
+
+```env
+SUPABASE_STORAGE_ENABLED=true
+SUPABASE_STORAGE_BUCKET=edevida-private
+SUPABASE_STORAGE_SIGNED_URL_TTL_SECONDS=900
+```
 
 Se quiser incluir algo extra (ex: pressao arterial, frequencia cardiaca de repouso), entrara neste passo.
 

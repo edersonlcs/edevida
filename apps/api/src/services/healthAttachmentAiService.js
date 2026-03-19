@@ -1,5 +1,7 @@
 const fs = require("fs/promises");
 const path = require("path");
+const os = require("os");
+const { randomUUID } = require("crypto");
 const { execFile } = require("child_process");
 const { promisify } = require("util");
 const { openai } = require("../integrations/openaiClient");
@@ -185,6 +187,24 @@ async function extractPdfText(absolutePath) {
   return text;
 }
 
+async function extractPdfTextFromBuffer(buffer) {
+  const tempDir = path.join(os.tmpdir(), "edevida");
+  await fs.mkdir(tempDir, { recursive: true });
+
+  const fileBase = `exam-${Date.now()}-${randomUUID()}`;
+  const pdfPath = path.join(tempDir, `${fileBase}.pdf`);
+  const txtPath = `${pdfPath}.txt`;
+
+  await fs.writeFile(pdfPath, buffer);
+  try {
+    await execFileAsync("pdftotext", [pdfPath, txtPath]);
+    return await fs.readFile(txtPath, "utf-8");
+  } finally {
+    await fs.unlink(pdfPath).catch(() => {});
+    await fs.unlink(txtPath).catch(() => {});
+  }
+}
+
 async function analyzeMedicalExamText({ rawText, modelOverride }) {
   const primaryModel = String(modelOverride || "").trim() || cfg.openaiModelExamText;
   return parseJsonWithSchema(
@@ -264,6 +284,7 @@ module.exports = {
   analyzeMedicalExamText,
   analyzeMedicalExamImage,
   extractPdfText,
+  extractPdfTextFromBuffer,
   markersArrayToObject,
   isPdfMime,
   isImageMime,

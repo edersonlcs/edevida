@@ -4,6 +4,7 @@ const { execFile } = require('child_process');
 const { promisify } = require('util');
 const { supabase } = require('../integrations/supabaseClient');
 const { cfg } = require('../config/env');
+const { isSupabaseStorageEnabled, getStorageBucketName } = require('./attachmentStorageService');
 
 const execFileAsync = promisify(execFile);
 
@@ -201,6 +202,8 @@ async function computeSystemUsage(userId) {
         error: dbInfo.error,
       },
       storage: {
+        enabled: isSupabaseStorageEnabled(),
+        bucket: getStorageBucketName(),
         buckets_count: storage.bucketsCount,
         buckets: storage.buckets,
         limit_mb: STORAGE_LIMIT_MB,

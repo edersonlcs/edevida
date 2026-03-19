@@ -63,7 +63,8 @@ curl http://127.0.0.1:3000/painel
 - Painel web com abas, historicos e graficos em `/painel`
 - Recomendacao inicial de treino (base para modulo personal trainer)
 - Upload de anexos (bioimpedancia e exames) com compressao automatica de imagem
-- Excluir anexo enviado (com limpeza do arquivo local) e editar metadados do exame
+- Anexos em Supabase Storage privado (URL assinada sob demanda) com fallback local
+- Excluir anexo enviado (com limpeza no Storage/local) e editar metadados do exame
 - Fallback automatico de modelos OpenAI quando um modelo nao estiver liberado na conta
 
 ## Endpoints principais
@@ -85,6 +86,7 @@ curl http://127.0.0.1:3000/painel
 - `DELETE /api/medical-exams/:id` (remover exame + tentar apagar arquivo do anexo)
 - `GET /api/ai/info` e `POST /api/ai/settings` (visualizar/alterar perfil de modelos IA)
 - `GET /api/system/usage` (uso local + Supabase + contagens do usuario)
+- `GET /api/files/open?file_url=...` (abre anexo privado via URL assinada)
 - `POST /api/workouts`
 - `POST /api/reports/generate`
 - `GET /api/dashboard/overview`
@@ -109,25 +111,27 @@ curl http://127.0.0.1:3000/painel
      - `/painel`
 
 3. Anexos salvos:
-   - Caminho local: `temp/uploads/`
-   - URL web: `/uploads/<arquivo>`
+   - Persistencia principal: Supabase Storage privado (bucket configuravel)
+   - Referencia no banco: `supabase://bucket/caminho-do-arquivo`
+   - Acesso web: `/api/files/open?file_url=...` (gera URL assinada automaticamente)
+   - Fallback (quando Storage estiver desativado): `temp/uploads/`
 
 ## Deploy
 
 - VPS: `infra/deploy/README.md`
 - Hostinger (migracao futura): `infra/deploy/hostinger/README.md`
 
-## Arquitetura recomendada (proxima fase)
+## Arquitetura alvo (fase atual)
 
-Para reduzir dependencia da VPS e facilitar migracao para hospedagem Node comum:
+Fluxo aplicado para reduzir dependencia de disco local e facilitar migracao para hospedagem Node comum:
 
 1. Supabase Postgres como fonte oficial dos dados.
 2. Supabase Storage privado para exames e fotos de evolucao.
-3. API Node stateless na hospedagem (sem manter arquivo permanente local).
-4. Disco local apenas temporario para processar upload; apagar apos salvar definitivo.
-5. Supabase Auth quando ativar login web real (hoje pode seguir com 1 usuario).
+3. API Node stateless (arquivo local permanente so em fallback).
+4. Acesso a anexo privado via endpoint de abertura segura (`/api/files/open`) com URL assinada.
+5. Supabase Auth segue opcional para quando ativar login web real (hoje pode seguir com 1 usuario).
 
 Observacao sobre imagens grandes:
 
 - O backend atual ja faz otimizacao/compressao local de imagem com `sharp` antes de salvar.
-- Na fase de migracao para Supabase Storage, manteremos esse tratamento para reduzir tamanho e custo.
+- Esse tratamento segue ativo antes do upload para o Supabase Storage, reduzindo tamanho e custo.

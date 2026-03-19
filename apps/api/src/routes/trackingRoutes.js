@@ -33,6 +33,7 @@ const {
   aiInfoController,
   aiSettingsUpdateController,
   systemUsageController,
+  fileOpenController,
   reportGenerateController,
   reportListController,
   dashboardOverviewController,
@@ -86,6 +87,7 @@ router.post("/api/nutrition/chat", nutritionChatController);
 router.get("/api/ai/info", aiInfoController);
 router.post("/api/ai/settings", aiSettingsUpdateController);
 router.get("/api/system/usage", systemUsageController);
+router.get("/api/files/open", fileOpenController);
 
 router.get("/api/reports", reportListController);
 router.post("/api/reports/generate", reportGenerateController);

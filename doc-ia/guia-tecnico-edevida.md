@@ -15,6 +15,7 @@ Estado atual relevante:
 - Aba `Cadastro` foi renomeada para `Info`.
 - `Info` mostra bloco de uso do sistema (projeto local, banco Supabase, Storage e contagens de registros).
 - Endpoint de suporte: `GET /api/system/usage`.
+- Endpoint de anexo privado: `GET /api/files/open?file_url=...` (URL assinada sob demanda).
 
 ## 2) Pastas principais
 
@@ -34,6 +35,14 @@ Estado atual relevante:
 5. Usuario confirma em `Registrar refeicao`.
 6. Backend persiste em `nutrition_entries` (+ `hydration_logs` quando aplicavel).
 7. Painel web e Telegram leem os mesmos dados do Supabase.
+
+Fluxo de anexos (atual):
+
+1. Upload chega no backend (`multer` em memoria).
+2. Imagem e otimizada/comprimida quando aplicavel (`sharp`).
+3. Arquivo e salvo em Supabase Storage privado (ou fallback local).
+4. Banco salva referencia canonica (`supabase://...` ou `local://...`).
+5. Web abre arquivo por `/api/files/open`, que resolve URL assinada no momento do clique.
 
 Fluxo de edicao (web):
 
@@ -89,6 +98,7 @@ npm run reset:test-data
 ```
 
 O reset remove dados de uso (refeicoes, agua, treinos, exames, bioimpedancia, medidas, relatorios e interacoes IA), limpa `telegram_updates` e apaga arquivos locais em `temp/` (mantendo estrutura base).
+No modo Storage Supabase ativo, a limpeza de `temp/` age como contingencia local.
 
 Flags uteis:
 
@@ -108,20 +118,28 @@ Flags uteis:
 - Ajustar endpoint de edicao de lancamentos: `apps/api/src/controllers/trackingController.js` + `apps/api/src/services/trackingDataService.js`
 - Ajustar monitor de uso (painel Info): `apps/api/src/services/systemUsageService.js` + `GET /api/system/usage`
 
-## 7) Arquitetura alvo (proxima fase)
+## 7) Arquitetura alvo (implementada nesta fase)
 
-Direcao recomendada para reduzir acoplamento com VPS:
+Direcao aplicada para reduzir acoplamento com VPS:
 
 1. Supabase Postgres como base oficial de dados.
 2. Supabase Storage privado para exames e fotos.
-3. API stateless na hospedagem (Hostinger), sem persistencia local definitiva.
-4. Arquivo local apenas temporario para processamento de upload.
+3. API stateless na hospedagem (Hostinger), sem depender de disco local para anexos.
+4. Arquivo local apenas em fallback/contingencia.
 5. Supabase Auth para login web quando ativado.
 
 Compressao/otimizacao de imagem:
 
 - Ja existe no backend em `apps/api/src/services/attachmentStorageService.js` usando `sharp`.
 - Mesmo com Storage no Supabase, manter o passo de otimizacao antes do upload para reduzir custo.
+
+Variaveis de ambiente do Storage:
+
+```env
+SUPABASE_STORAGE_ENABLED=true
+SUPABASE_STORAGE_BUCKET=edevida-private
+SUPABASE_STORAGE_SIGNED_URL_TTL_SECONDS=900
+```
 
 ## 8) Checklist rapido pos-alteracao
 

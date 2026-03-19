@@ -23,6 +23,9 @@ const cfg = {
   supabasePublishableKey: process.env.SUPABASE_PUBLISHABLE_KEY || "",
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || "",
   supabaseDbUrl: process.env.SUPABASE_DB_URL || "",
+  supabaseStorageEnabled: String(process.env.SUPABASE_STORAGE_ENABLED || "true").toLowerCase() !== "false",
+  supabaseStorageBucket: process.env.SUPABASE_STORAGE_BUCKET || "edevida-private",
+  supabaseStorageSignedUrlTtlSeconds: Number(process.env.SUPABASE_STORAGE_SIGNED_URL_TTL_SECONDS || 900),
 };
 
 function missingRequiredForRuntime() {

@@ -842,7 +842,9 @@ function renderSystemUsagePanel() {
       storage.buckets_count === null || storage.buckets_count === undefined
         ? "indisponível"
         : `${fmtNumber(storage.buckets_count, 0)} bucket(s)`,
-      storage.error ? `erro: ${storage.error}` : `limite de referência: ${fmtNumber(storage.limit_mb, 0)} MB`
+      storage.error
+        ? `erro: ${storage.error}`
+        : `modo: ${storage.enabled ? "ativo" : "desativado"} | bucket: ${storage.bucket || "-"} | limite de referência: ${fmtNumber(storage.limit_mb, 0)} MB`
     ),
     systemUsageCardHtml(
       "Uploads locais",
@@ -2892,6 +2894,11 @@ function renderHistories() {
       <header><strong>${fmtDateTime(item.recorded_at)}</strong></header>
       <p>Gordura: <strong>${fmtNumber(item.body_fat_pct)}%</strong> | Muscular: ${fmtNumber(item.muscle_mass_kg)} kg</p>
       <p>Água: ${fmtNumber(item.body_water_pct)}% | BMR: ${fmtNumber(item.bmr_kcal, 0)} kcal | Visceral: ${fmtNumber(item.visceral_fat_level)}</p>
+      ${
+        item.attachment_url
+          ? `<p><a class="file-link" href="${escapeHtml(item.attachment_url)}" target="_blank" rel="noreferrer">Abrir anexo de bioimpedância</a></p>`
+          : ""
+      }
       <p class="muted">${escapeHtml(item.notes || "-")}</p>
     </article>
   `);
@@ -2947,8 +2954,20 @@ function renderHistories() {
 
 function extractUploadUrlFromNotes(notes) {
   const raw = String(notes || "");
-  const match = raw.match(/(\/uploads\/[^\s|]+)/i);
+  const markerMatch = raw.match(/\[file_ref:([^\]]+)\]/i);
+  if (markerMatch?.[1]) return markerMatch[1];
+
+  const match = raw.match(/(supabase:\/\/[^\s|]+|local:\/\/temp\/uploads\/[^\s|]+|\/uploads\/[^\s|]+)/i);
   return match ? match[1] : "";
+}
+
+function toAttachmentOpenUrl(fileUrl) {
+  const raw = String(fileUrl || "").trim();
+  if (!raw) return "";
+  if (raw.startsWith("supabase://") || raw.startsWith("local://temp/uploads/")) {
+    return `/api/files/open?file_url=${encodeURIComponent(raw)}`;
+  }
+  return raw;
 }
 
 function toDateInputOrEmpty(value) {
@@ -3060,7 +3079,7 @@ function renderAttachmentsHistory() {
     title: "Anexo de bioimpedância",
     date: item.recorded_at || item.created_at,
     markersCount: null,
-    fileUrl: extractUploadUrlFromNotes(item.notes),
+    fileUrl: toAttachmentOpenUrl(item.attachment_url || extractUploadUrlFromNotes(item.notes)),
   }));
 
   const examEntries = (state.cache.examsAll?.length ? state.cache.examsAll : state.cache.exams || []).map((item) => ({
@@ -3070,7 +3089,7 @@ function renderAttachmentsHistory() {
     title: item.exam_name || "Anexo de exame",
     date: item.exam_date || item.created_at,
     markersCount: Object.keys(item.markers || {}).length,
-    fileUrl: item.file_url || "",
+    fileUrl: toAttachmentOpenUrl(item.file_url || ""),
   }));
 
   const merged = [...bioEntries, ...examEntries]
