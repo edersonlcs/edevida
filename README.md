@@ -20,6 +20,16 @@ npm install
 npm run dev
 ```
 
+## Android (Fase A1)
+
+```bash
+cd apps/android
+npm install
+npm run doctor
+npm run sync
+npm run build:debug
+```
+
 ## Reset de dados de teste (antes de novo ciclo)
 
 ```bash

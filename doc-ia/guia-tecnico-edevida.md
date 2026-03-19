@@ -34,6 +34,7 @@ Estado atual relevante:
 - `apps/api/src/services/nutritionAiService.js`: prompt e parse de analise nutricional
 - `apps/api/src/services/healthAttachmentAiService.js`: analise de exames e bioimpedancia por anexo
 - `apps/web/public/app.js`: toda logica do painel, abas e graficos
+- `apps/android`: empacotamento Android via Capacitor (fase A1 iniciada)
 - `infra/supabase/migrations/20260317_atividade3_schema.sql`: schema oficial do banco
 
 ## 3) Fluxo principal
@@ -185,3 +186,29 @@ Cache web de painel (frontend):
    - botao `/help` no Telegram
    - fluxo rascunho > registrar no Telegram
 5. Commit com mensagem clara do bloco alterado.
+
+## 9) Android (fase A1 atual)
+
+Comandos:
+
+```bash
+cd apps/android
+npm install
+npm run doctor
+npm run sync
+npm run build:debug
+```
+
+Pre-requisitos do host:
+
+- Java (JDK) instalado
+- Android SDK instalado (preferencia em `~/Android/Sdk`)
+
+Scripts locais:
+
+- `apps/android/scripts/sync-capacitor.sh`
+- `apps/android/scripts/build-apk.sh`
+
+Saida do build debug:
+
+- `apps/android/android/app/build/outputs/apk/debug/app-debug.apk`

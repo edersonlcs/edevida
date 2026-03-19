@@ -1,23 +1,60 @@
 # EdeVida Android
 
-Diretorio reservado para o app Android (APK pessoal).
+App Android (APK pessoal) do EdeVida via Capacitor.
 
-## Objetivo
+## Status da fase
 
-Empacotar o frontend do EdeVida para Android, mantendo o backend atual.
+Fase A1 iniciada: scaffold Android criado e pronto para evoluir.
 
-## Escopo deste diretorio
+## Estrutura deste diretorio
 
-- configuracao do Capacitor;
-- projeto nativo Android gerado pelo Capacitor;
-- scripts de build do APK.
+- `capacitor.config.json`: configuracao do app Capacitor
+- `android/`: projeto nativo Android gerado pelo Capacitor
+- `scripts/`: atalhos de sync e build APK
+- `package.json`: comandos locais do app Android
 
-## Documento de planejamento
+## Comandos principais
 
-Plano oficial: `doc-ia/plano-android-edevida.md`.
+```bash
+cd apps/android
+npm install
+npm run doctor
+npm run sync
+npm run open
+npm run build:debug
+```
 
-## Regras
+Pre-requisitos do host:
 
-1. Logica de negocio continua no backend (`apps/api`).
-2. Ajustes de interface compartilhada continuam em `apps/web`.
-3. O que for exclusivo do Android deve ficar aqui.
+1. Java (JDK) instalado.
+2. Android SDK instalado (padrao esperado: `~/Android/Sdk`).
+
+Atalhos shell:
+
+```bash
+cd apps/android
+./scripts/sync-capacitor.sh
+./scripts/build-apk.sh debug
+./scripts/build-apk.sh release
+```
+
+Observacao:
+
+- `build-apk.sh` detecta `JAVA_HOME` e cria `android/local.properties` automaticamente usando `ANDROID_SDK_ROOT` (ou `~/Android/Sdk`).
+
+## Saidas esperadas
+
+- APK debug:
+  - `apps/android/android/app/build/outputs/apk/debug/app-debug.apk`
+- APK release:
+  - `apps/android/android/app/build/outputs/apk/release/app-release.apk`
+
+## Regras de organizacao
+
+1. Logica de negocio permanece no backend (`apps/api`).
+2. Ajustes de UI compartilhada ficam no web (`apps/web`).
+3. Codigo exclusivo do Android fica em `apps/android`.
+
+## Planejamento oficial
+
+`doc-ia/plano-android-edevida.md`

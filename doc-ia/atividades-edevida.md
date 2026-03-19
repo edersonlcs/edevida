@@ -288,6 +288,13 @@ Melhorias aplicadas apos uso real no web/telegram:
   - chave `edevida_panel_cache_v1`;
   - TTL de 5 minutos;
   - invalidacao automatica em acoes de escrita (salvar/excluir), mantendo consistencia dos dados.
+- inicio da Atividade 15 (Android):
+  - estrutura `apps/android` criada;
+  - Capacitor inicializado com app id `com.edexterno.edevida`;
+  - plataforma Android adicionada (`npx cap add android`);
+  - scripts de suporte criados (`sync-capacitor.sh`, `build-apk.sh`);
+  - validacao da Fase A1 concluida com build debug do APK:
+    - `apps/android/android/app/build/outputs/apk/debug/app-debug.apk`.
 
 ---
 

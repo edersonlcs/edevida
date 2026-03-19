@@ -1,0 +1,9 @@
+{
+  "appId": "com.edexterno.edevida",
+  "appName": "EdeVida",
+  "webDir": "../web/public",
+  "server": {
+    "url": "https://edevida.edexterno.com.br/painel",
+    "cleartext": false
+  }
+}
