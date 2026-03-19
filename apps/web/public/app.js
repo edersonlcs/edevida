@@ -2,6 +2,9 @@ const state = {
   userId: null,
   ui: {
     showProgressPhotos: false,
+    activeTab: "dashboard",
+    pendingDashboardChartsRender: false,
+    pendingExamPanelRender: false,
   },
   auth: {
     config: null,
@@ -72,6 +75,7 @@ const PROTECTED_FILE_CACHE_TTL_MS = 8 * 60 * 1000;
 const AUTH_SESSION_STARTED_AT_KEY = "edevida_auth_started_at";
 const PANEL_CACHE_STORAGE_KEY = "edevida_panel_cache_v1";
 const PANEL_CACHE_TTL_MS = 5 * 60 * 1000;
+const ACTIVE_TAB_STORAGE_KEY = "edevida_active_tab_v1";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -491,6 +495,15 @@ function currentFilterParams() {
 
 function queryStringFromObject(input) {
   return new URLSearchParams(compactObject(input)).toString();
+}
+
+function pickFirstFileFromInputs(form, names = []) {
+  if (!form) return null;
+  for (const name of names) {
+    const candidate = form.querySelector(`input[name="${name}"]`)?.files?.[0] || null;
+    if (candidate) return candidate;
+  }
+  return null;
 }
 
 function currentFilterKey() {
@@ -964,22 +977,68 @@ async function ensureUser() {
 }
 
 function setupTabs() {
-  const buttons = Array.from(document.querySelectorAll(".tab-button"));
+  const desktopButtons = Array.from(document.querySelectorAll(".tab-button"));
+  const mobileButtons = Array.from(document.querySelectorAll(".mobile-tab-button"));
+  const buttons = [...desktopButtons, ...mobileButtons];
   const panels = Array.from(document.querySelectorAll(".tab-panel"));
+  const validTabs = new Set(
+    panels
+      .map((panel) => String(panel.id || "").replace(/^tab-/, ""))
+      .filter(Boolean)
+  );
 
-  function activate(tabName) {
+  function activate(tabName, options = {}) {
+    const nextTab = validTabs.has(tabName) ? tabName : "dashboard";
+    const shouldPersist = options.persist !== false;
+    const shouldScroll = options.scroll !== false;
+
     for (const button of buttons) {
-      button.classList.toggle("is-active", button.dataset.tab === tabName);
+      button.classList.toggle("is-active", button.dataset.tab === nextTab);
     }
 
     for (const panel of panels) {
-      panel.classList.toggle("is-active", panel.id === `tab-${tabName}`);
+      panel.classList.toggle("is-active", panel.id === `tab-${nextTab}`);
+    }
+
+    state.ui.activeTab = nextTab;
+    if (shouldPersist) {
+      try {
+        window.localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, nextTab);
+      } catch {
+        // ignore storage errors
+      }
+    }
+
+    if (shouldScroll && window.matchMedia("(max-width: 700px)").matches) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    if (nextTab === "dashboard" && state.ui.pendingDashboardChartsRender) {
+      renderCharts();
+      state.ui.pendingDashboardChartsRender = false;
+    }
+
+    if (nextTab === "exames" && state.ui.pendingExamPanelRender) {
+      renderExamPanel();
+      state.ui.pendingExamPanelRender = false;
     }
   }
 
   for (const button of buttons) {
     button.addEventListener("click", () => activate(button.dataset.tab));
   }
+
+  let initialTab = "dashboard";
+  try {
+    const storedTab = window.localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
+    if (storedTab && validTabs.has(storedTab)) {
+      initialTab = storedTab;
+    }
+  } catch {
+    // ignore storage errors
+  }
+
+  activate(initialTab, { persist: false, scroll: false });
 }
 
 function buildReportCard(report) {
@@ -4402,10 +4461,22 @@ function renderAllFromStateCache() {
   renderReports();
   renderHistories();
   renderAttachmentsHistory();
-  renderExamPanel();
   renderNutritionDashboard();
   renderAiInfo();
-  renderCharts();
+
+  if (state.ui.activeTab === "exames") {
+    renderExamPanel();
+    state.ui.pendingExamPanelRender = false;
+  } else {
+    state.ui.pendingExamPanelRender = true;
+  }
+
+  if (state.ui.activeTab === "dashboard") {
+    renderCharts();
+    state.ui.pendingDashboardChartsRender = false;
+  } else {
+    state.ui.pendingDashboardChartsRender = true;
+  }
 
   loadTelegramWebhookInfo().catch(() => {});
   renderTelegramInfo();
@@ -4962,6 +5033,13 @@ function setupForms() {
       setStatus("Enviando foto de evolução...", "info");
 
       const formData = new FormData(measurementPhotoForm);
+      const selectedFile = pickFirstFileFromInputs(measurementPhotoForm, ["file_camera", "file_gallery"]);
+      if (!selectedFile) {
+        throw new Error("Selecione uma foto pela câmera ou galeria.");
+      }
+      formData.delete("file_camera");
+      formData.delete("file_gallery");
+      formData.set("file", selectedFile);
       formData.set("user_id", userId);
       const result = await apiFormData("/api/measurements/progress-photo", formData);
 
@@ -4995,6 +5073,13 @@ function setupForms() {
       setStatus("Enviando bioimpedância para análise...", "info");
 
       const formData = new FormData(bioUploadForm);
+      const selectedFile = pickFirstFileFromInputs(bioUploadForm, ["file_camera", "file_gallery"]);
+      if (!selectedFile) {
+        throw new Error("Selecione uma imagem pela câmera ou galeria.");
+      }
+      formData.delete("file_camera");
+      formData.delete("file_gallery");
+      formData.set("file", selectedFile);
       formData.set("user_id", userId);
       const result = await apiFormData("/api/bioimpedance/upload", formData);
 
@@ -5016,6 +5101,13 @@ function setupForms() {
       setStatus("Enviando exame para análise...", "info");
 
       const formData = new FormData(examUploadForm);
+      const selectedFile = pickFirstFileFromInputs(examUploadForm, ["file_camera", "file_document"]);
+      if (!selectedFile) {
+        throw new Error("Selecione uma foto ou PDF do exame.");
+      }
+      formData.delete("file_camera");
+      formData.delete("file_document");
+      formData.set("file", selectedFile);
       formData.set("user_id", userId);
       const result = await apiFormData("/api/medical-exams/upload", formData);
 

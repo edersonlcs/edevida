@@ -8,6 +8,7 @@
   --accent-3: #267cb7;
   --line: rgba(19, 39, 43, 0.12);
   --shadow: 0 22px 45px rgba(19, 39, 43, 0.14);
+  --mobile-tabbar-height: 74px;
 }
 
 * {
@@ -188,6 +189,26 @@ body {
   color: #fff;
   border-color: transparent;
   background: linear-gradient(135deg, var(--accent), #f0a94e);
+}
+
+.mobile-tabbar {
+  display: none;
+}
+
+.mobile-tab-button {
+  border: 1px solid rgba(19, 39, 43, 0.18);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--ink-soft);
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 0.52rem 0.3rem;
+}
+
+.mobile-tab-button.is-active {
+  border-color: rgba(211, 95, 47, 0.34);
+  background: linear-gradient(135deg, rgba(211, 95, 47, 0.18), rgba(240, 169, 78, 0.24));
+  color: #7b3418;
 }
 
 .tab-panel {
@@ -1297,9 +1318,30 @@ textarea {
 }
 
 @media (max-width: 700px) {
+  body {
+    padding-bottom: calc(var(--mobile-tabbar-height) + 1rem);
+  }
+
   .layout {
     width: min(1220px, 94vw);
     margin-top: 1.1rem;
+    margin-bottom: calc(var(--mobile-tabbar-height) + 1.2rem);
+    gap: 0.82rem;
+  }
+
+  .card {
+    border-radius: 14px;
+    padding: 0.8rem;
+  }
+
+  .hero-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .hero-actions .btn-primary,
+  .hero-actions .btn-secondary {
+    width: 100%;
   }
 
   .two-cols {
@@ -1311,8 +1353,43 @@ textarea {
   }
 
   .tabs {
+    position: sticky;
+    top: 0.45rem;
+    z-index: 15;
     overflow-x: auto;
     white-space: nowrap;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+  }
+
+  .tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tab-button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    font-size: 0.82rem;
+    padding: 0.5rem 0.72rem;
+  }
+
+  .filters-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+    align-items: end;
+  }
+
+  .filter-field {
+    min-width: 0;
+  }
+
+  .filter-nav-btn {
+    width: 100%;
+  }
+
+  .chart-card canvas {
+    height: clamp(170px, 44vw, 220px) !important;
   }
 
   .meal-grid {
@@ -1336,7 +1413,29 @@ textarea {
   }
 
   .filter-summary {
+    grid-column: 1 / -1;
     margin: 0;
     width: 100%;
+  }
+
+  .footer {
+    margin-bottom: 0;
+  }
+
+  .mobile-tabbar {
+    position: fixed;
+    left: 0.4rem;
+    right: 0.4rem;
+    bottom: max(0.35rem, env(safe-area-inset-bottom));
+    z-index: 24;
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 0.26rem;
+    padding: 0.34rem;
+    border: 1px solid rgba(19, 39, 43, 0.2);
+    border-radius: 14px;
+    background: rgba(252, 255, 255, 0.95);
+    box-shadow: 0 16px 30px rgba(19, 39, 43, 0.2);
+    backdrop-filter: blur(8px);
   }
 }
