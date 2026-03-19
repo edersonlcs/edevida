@@ -9,7 +9,10 @@
     "copy": "npx cap copy android",
     "open": "npx cap open android",
     "build:debug": "cd android && ./gradlew assembleDebug",
-    "build:release": "cd android && ./gradlew assembleRelease"
+    "build:release": "cd android && ./gradlew assembleRelease",
+    "keystore:generate": "./scripts/generate-keystore.sh",
+    "release:sign": "./scripts/sign-release.sh",
+    "release:all": "./scripts/build-apk.sh release && ./scripts/sign-release.sh"
   },
   "keywords": [],
   "author": "",

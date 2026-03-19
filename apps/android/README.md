@@ -4,13 +4,13 @@ App Android (APK pessoal) do EdeVida via Capacitor.
 
 ## Status da fase
 
-Fase A1 iniciada: scaffold Android criado e pronto para evoluir.
+Fases A1-A6 concluídas nesta rodada (scaffold, mobile UX, build e assinatura release).
 
 ## Estrutura deste diretorio
 
 - `capacitor.config.json`: configuracao do app Capacitor
 - `android/`: projeto nativo Android gerado pelo Capacitor
-- `scripts/`: atalhos de sync e build APK
+- `scripts/`: atalhos de sync, build e assinatura APK
 - `package.json`: comandos locais do app Android
 
 ## Comandos principais
@@ -36,11 +36,15 @@ cd apps/android
 ./scripts/sync-capacitor.sh
 ./scripts/build-apk.sh debug
 ./scripts/build-apk.sh release
+./scripts/generate-keystore.sh
+APK_KEYSTORE_PASSWORD='sua_senha' APK_KEY_PASSWORD='sua_senha' ./scripts/sign-release.sh
 ```
 
 Observacao:
 
 - `build-apk.sh` detecta `JAVA_HOME` e cria `android/local.properties` automaticamente usando `ANDROID_SDK_ROOT` (ou `~/Android/Sdk`).
+- `generate-keystore.sh` cria keystore em `temp/android-keys` (fora do Git).
+- `sign-release.sh` assina e valida o APK release.
 
 ## Saidas esperadas
 
@@ -48,6 +52,15 @@ Observacao:
   - `apps/android/android/app/build/outputs/apk/debug/app-debug.apk`
 - APK release:
   - `apps/android/android/app/build/outputs/apk/release/app-release.apk`
+  - `apps/android/android/app/build/outputs/apk/release/app-release-signed.apk`
+
+## Instalar no celular
+
+1. Copie para o Android:
+   - `apps/android/android/app/build/outputs/apk/release/app-release-signed.apk`
+2. No celular, habilite instalação de fontes desconhecidas para seu gerenciador de arquivos.
+3. Abra o APK e confirme instalação.
+4. Após instalar, desative a opção de fontes desconhecidas novamente.
 
 ## Regras de organizacao
 

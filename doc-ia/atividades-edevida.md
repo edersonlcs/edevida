@@ -197,7 +197,7 @@ Regra de marcacao:
 - [x] Atividade 12 - Deploy na VPS (producao atual)
 - [x] Atividade 13 - Preparar migracao para Hostinger (Node hosting)
 - [x] Atividade 14 - Preparar base para modulo futuro de atividade fisica
-- [ ] Atividade 15 - App Android (APK pessoal)
+- [x] Atividade 15 - App Android (APK pessoal)
 
 ---
 
@@ -295,6 +295,13 @@ Melhorias aplicadas apos uso real no web/telegram:
   - scripts de suporte criados (`sync-capacitor.sh`, `build-apk.sh`);
   - validacao da Fase A1 concluida com build debug do APK:
     - `apps/android/android/app/build/outputs/apk/debug/app-debug.apk`.
+- fases A2-A6 finalizadas na mesma rodada:
+  - layout mobile-first com navegacao de app no celular (tabbar inferior + abas persistentes);
+  - fluxos mobile para foto/audio/anexo atualizados para camera/galeria;
+  - ajustes de performance por aba (renderizacao sob demanda para dashboard/exames);
+  - assinatura de release com scripts dedicados;
+  - APK final assinado gerado:
+    - `apps/android/android/app/build/outputs/apk/release/app-release-signed.apk`.
 
 ---
 

@@ -28,7 +28,14 @@ npm install
 npm run doctor
 npm run sync
 npm run build:debug
+npm run build:release
+./scripts/generate-keystore.sh
+APK_KEYSTORE_PASSWORD='sua_senha' APK_KEY_PASSWORD='sua_senha' ./scripts/sign-release.sh
 ```
+
+APK final para instalar no celular:
+
+- `apps/android/android/app/build/outputs/apk/release/app-release-signed.apk`
 
 ## Reset de dados de teste (antes de novo ciclo)
 

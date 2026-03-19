@@ -4,6 +4,17 @@
 
 Criar um app Android instalavel por APK, mantendo o que ja funciona no web e no Telegram, com layout otimizado para celular.
 
+## Status atual (19/03/2026)
+
+Fases A1 a A6 executadas nesta rodada.
+
+- [x] A1 - Base Android e build inicial
+- [x] A2 - Layout mobile-first
+- [x] A3 - Fluxos mobile de foto/audio/anexo
+- [x] A4 - Ajustes de sessao/performance para uso em app
+- [x] A5 - Assinatura e release APK
+- [x] A6 - Documentacao operacional
+
 ## Decisao tecnica recomendada
 
 Para o seu caso (uso pessoal, sem Play Store), a melhor rota e:
@@ -157,4 +168,8 @@ Esforco estimado: **baixo** (0,5 dia).
 
 ## Proxima acao sugerida
 
-Quando voce autorizar, iniciamos a **Fase A1** com scaffold de `apps/android` e primeiro APK de teste.
+APK final pronto para instalar:
+
+- `apps/android/android/app/build/outputs/apk/release/app-release-signed.apk`
+
+Se quiser, proximo ciclo sera visual (A2 refinamento fino): polimento por tela com base no seu uso real no celular.

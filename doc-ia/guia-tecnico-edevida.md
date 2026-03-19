@@ -187,7 +187,7 @@ Cache web de painel (frontend):
    - fluxo rascunho > registrar no Telegram
 5. Commit com mensagem clara do bloco alterado.
 
-## 9) Android (fase A1 atual)
+## 9) Android (A1-A6 atual)
 
 Comandos:
 
@@ -197,6 +197,9 @@ npm install
 npm run doctor
 npm run sync
 npm run build:debug
+npm run build:release
+./scripts/generate-keystore.sh
+APK_KEYSTORE_PASSWORD='sua_senha' APK_KEY_PASSWORD='sua_senha' ./scripts/sign-release.sh
 ```
 
 Pre-requisitos do host:
@@ -208,7 +211,10 @@ Scripts locais:
 
 - `apps/android/scripts/sync-capacitor.sh`
 - `apps/android/scripts/build-apk.sh`
+- `apps/android/scripts/generate-keystore.sh`
+- `apps/android/scripts/sign-release.sh`
 
 Saida do build debug:
 
 - `apps/android/android/app/build/outputs/apk/debug/app-debug.apk`
+- `apps/android/android/app/build/outputs/apk/release/app-release-signed.apk`
