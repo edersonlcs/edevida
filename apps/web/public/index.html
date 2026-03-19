@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/web/styles.css?v=20260319d" />
+    <link rel="stylesheet" href="/web/styles.css?v=20260319g" />
   </head>
   <body>
     <div class="bg-layer"></div>
@@ -45,7 +45,7 @@
         </div>
         <div class="hero-actions">
           <button id="refresh-dashboard" class="btn-primary">Atualizar tudo</button>
-          <button id="generate-daily-report" class="btn-secondary">Gerar relatório diário</button>
+          <button id="generate-daily-report" class="btn-secondary">Gerar relatório do período</button>
         </div>
         <div id="status-message" class="status-message">Carregando dados...</div>
       </header>
@@ -109,29 +109,29 @@
         </section>
 
         <section class="metrics bio-metrics">
-          <article id="metric-card-bio-fat" class="metric card">
+          <article id="metric-card-bio-fat" class="metric card metric-global-source">
             <h2>Bio gordura (%)</h2>
             <p id="metric-bio-fat" class="metric-value">-</p>
             <p id="metric-bio-fat-sub" class="metric-sub">último registro</p>
             <p id="metric-bio-fat-ideal" class="metric-sub muted">ideal --</p>
           </article>
 
-          <article class="metric card">
+          <article class="metric card metric-global-source">
             <h2>Massa muscular (kg)</h2>
             <p id="metric-bio-muscle" class="metric-value">-</p>
-            <p class="metric-sub">último registro</p>
+            <p class="metric-sub">histórico completo (fora do filtro)</p>
           </article>
 
-          <article class="metric card">
+          <article class="metric card metric-global-source">
             <h2>Água corporal (%)</h2>
             <p id="metric-bio-water" class="metric-value">-</p>
-            <p class="metric-sub">último registro</p>
+            <p class="metric-sub">histórico completo (fora do filtro)</p>
           </article>
 
-          <article class="metric card">
+          <article class="metric card metric-global-source">
             <h2>Gordura visceral</h2>
             <p id="metric-bio-visceral" class="metric-value">-</p>
-            <p class="metric-sub">último registro</p>
+            <p class="metric-sub">histórico completo (fora do filtro)</p>
           </article>
         </section>
 
@@ -183,7 +183,10 @@
         </section>
 
         <article class="card">
-          <h3>Evolução por foto</h3>
+          <div class="section-head">
+            <h3>Evolução por foto</h3>
+            <button id="toggle-progress-photos" class="btn-ghost" type="button">Mostrar miniaturas</button>
+          </div>
           <div id="progress-photo-gallery" class="progress-photo-grid"></div>
         </article>
 
@@ -691,6 +694,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="/web/app.js?v=20260319e" type="module"></script>
+    <script src="/web/app.js?v=20260319k" type="module"></script>
   </body>
 </html>

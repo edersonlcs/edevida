@@ -28,6 +28,8 @@ const {
   listGoals,
   createBodyMeasurement,
   listBodyMeasurements,
+  getBodyMeasurementById,
+  deleteBodyMeasurement,
   createBioimpedanceRecord,
   listBioimpedanceRecords,
   getBioimpedanceRecordById,
@@ -454,6 +456,9 @@ const authConfigController = asyncHandler(async (_req, res) => {
       enabled: Boolean(cfg.webAuthEnabled),
       supabase_url: cfg.supabaseUrl,
       supabase_publishable_key: cfg.supabasePublishableKey,
+      session_max_hours: Number.isFinite(cfg.webAuthSessionMaxHours)
+        ? Math.max(1, cfg.webAuthSessionMaxHours)
+        : 12,
     },
   });
 });
@@ -603,6 +608,47 @@ const bodyMeasurementListController = asyncHandler(async (req, res) => {
     notes: stripFileRefMarker(measurement.notes),
   }));
   return res.json({ ok: true, measurements: normalized });
+});
+
+const bodyMeasurementDeleteController = asyncHandler(async (req, res) => {
+  const userId = await resolveRequestUserId(req);
+  const measurementId = String(req.params.id || "").trim();
+  if (!measurementId) {
+    return res.status(400).json({ ok: false, error: "id da medida corporal obrigatorio" });
+  }
+
+  const existing = await getBodyMeasurementById(userId, measurementId);
+  if (!existing) {
+    return res.status(404).json({ ok: false, error: "Medida corporal nao encontrada" });
+  }
+
+  const removed = await deleteBodyMeasurement(userId, measurementId);
+  if (!removed) {
+    return res.status(404).json({ ok: false, error: "Medida corporal nao encontrada para exclusao" });
+  }
+
+  const possibleUrls = [existing.progress_photo_url, extractUploadUrlFromNotes(existing.notes)]
+    .map((value) => normalizeStoredFileUrlForStorage(value))
+    .filter(Boolean);
+  const uniqueUrls = [...new Set(possibleUrls)];
+  const warnings = [];
+  let deletedFiles = 0;
+
+  for (const fileUrl of uniqueUrls) {
+    try {
+      const deleted = await deleteUploadedFileByUrl(fileUrl);
+      if (deleted) deletedFiles += 1;
+    } catch (err) {
+      warnings.push(`Falha ao remover arquivo ${fileUrl}: ${err.message}`);
+    }
+  }
+
+  return res.json({
+    ok: true,
+    measurement_id: measurementId,
+    deleted_files: deletedFiles,
+    warnings,
+  });
 });
 
 const bioimpedanceCreateController = asyncHandler(async (req, res) => {
@@ -1595,6 +1641,9 @@ const systemUsageController = asyncHandler(async (req, res) => {
 
 const fileOpenController = asyncHandler(async (req, res) => {
   const fileUrl = String(req.query?.file_url || "").trim();
+  const mode = String(req.query?.mode || "")
+    .trim()
+    .toLowerCase();
   if (!fileUrl) {
     return res.status(400).json({ ok: false, error: "file_url obrigatorio" });
   }
@@ -1607,6 +1656,10 @@ const fileOpenController = asyncHandler(async (req, res) => {
   const redirectTo = await resolveFileUrlForAccess(normalized);
   if (!redirectTo) {
     return res.status(404).json({ ok: false, error: "Arquivo nao encontrado" });
+  }
+
+  if (mode === "url" || mode === "json") {
+    return res.json({ ok: true, url: redirectTo });
   }
 
   return res.redirect(302, redirectTo);
@@ -1711,6 +1764,7 @@ module.exports = {
   bodyMeasurementCreateController,
   bodyMeasurementProgressPhotoUploadController,
   bodyMeasurementListController,
+  bodyMeasurementDeleteController,
   bioimpedanceCreateController,
   bioimpedanceUploadController,
   bioimpedanceListController,

@@ -35,6 +35,7 @@ const cfg = {
   supabaseStorageSignedUrlTtlSeconds: Number(process.env.SUPABASE_STORAGE_SIGNED_URL_TTL_SECONDS || 900),
   webAuthEnabled: String(process.env.WEB_AUTH_ENABLED || "true").toLowerCase() !== "false",
   webAuthAllowedEmails: parseCsvLowerList(process.env.WEB_AUTH_ALLOWED_EMAILS || ""),
+  webAuthSessionMaxHours: Number(process.env.WEB_AUTH_SESSION_MAX_HOURS || 12),
 };
 
 function missingRequiredForRuntime() {

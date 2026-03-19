@@ -1,5 +1,8 @@
 const state = {
   userId: null,
+  ui: {
+    showProgressPhotos: false,
+  },
   auth: {
     config: null,
     client: null,
@@ -64,6 +67,9 @@ const MEAL_CALORIE_RATIO = {
 };
 
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const protectedFileAccessUrlCache = new Map();
+const PROTECTED_FILE_CACHE_TTL_MS = 8 * 60 * 1000;
+const AUTH_SESSION_STARTED_AT_KEY = "edevida_auth_started_at";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -485,6 +491,94 @@ function queryStringFromObject(input) {
   return new URLSearchParams(compactObject(input)).toString();
 }
 
+function normalizeSameOriginPath(url) {
+  const raw = String(url || "").trim();
+  if (!raw) return "";
+
+  try {
+    const parsed = new URL(raw, window.location.origin);
+    if (parsed.origin === window.location.origin) {
+      return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    }
+  } catch {
+    return raw;
+  }
+
+  return raw;
+}
+
+function isProtectedFileOpenUrl(url) {
+  const normalized = normalizeSameOriginPath(url);
+  return normalized.startsWith("/api/files/open?");
+}
+
+async function responseErrorMessage(response) {
+  const body = await response
+    .clone()
+    .json()
+    .catch(() => null);
+  return body?.error || body?.message || `HTTP ${response.status}`;
+}
+
+function clearProtectedFileAccessUrlCache() {
+  protectedFileAccessUrlCache.clear();
+}
+
+async function resolveProtectedFileAccessUrl(rawUrl) {
+  const normalized = normalizeSameOriginPath(rawUrl);
+  if (!isProtectedFileOpenUrl(normalized)) {
+    return normalized;
+  }
+
+  const cached = protectedFileAccessUrlCache.get(normalized);
+  if (cached?.url && Number(cached.expiresAt || 0) > Date.now()) {
+    return cached.url;
+  }
+
+  const separator = normalized.includes("?") ? "&" : "?";
+  const apiUrl = `${normalized}${separator}mode=url`;
+  const response = await fetch(apiUrl, {
+    headers: authHeaders({}, { includeJson: false }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await responseErrorMessage(response));
+  }
+
+  const payload = await response.json().catch(() => ({}));
+  const accessUrl = String(payload?.url || "").trim();
+  if (!accessUrl) {
+    throw new Error("Não foi possível resolver URL de acesso do arquivo");
+  }
+
+  protectedFileAccessUrlCache.set(normalized, {
+    url: accessUrl,
+    expiresAt: Date.now() + PROTECTED_FILE_CACHE_TTL_MS,
+  });
+  return accessUrl;
+}
+
+async function hydrateProtectedImages(root) {
+  const scope = root || document;
+  const nodes = Array.from(scope.querySelectorAll("img[data-protected-src]"));
+  if (!nodes.length) return;
+
+  await Promise.all(
+    nodes.map(async (img) => {
+      const rawUrl = String(img.dataset.protectedSrc || "").trim();
+      if (!rawUrl) return;
+      try {
+        const resolved = await resolveProtectedFileAccessUrl(rawUrl);
+        img.src = resolved;
+        img.removeAttribute("data-protected-src");
+      } catch {
+        img.classList.add("image-load-error");
+        img.alt = "Não foi possível carregar a imagem";
+      }
+    })
+  );
+}
+
 function authHeaders(extraHeaders = {}, { includeJson = true } = {}) {
   const headers = {
     ...(includeJson ? { "Content-Type": "application/json" } : {}),
@@ -566,7 +660,63 @@ function updateAuthUserBar() {
   bar.classList.remove("is-hidden");
 }
 
+function getAuthSessionMaxHours() {
+  const raw = Number(state.auth?.config?.session_max_hours || 12);
+  if (!Number.isFinite(raw) || raw <= 0) return 12;
+  return raw;
+}
+
+function readAuthSessionStartedAtMs() {
+  try {
+    const raw = Number(window.localStorage.getItem(AUTH_SESSION_STARTED_AT_KEY) || "");
+    return Number.isFinite(raw) && raw > 0 ? raw : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeAuthSessionStartedAtMs(value) {
+  if (!Number.isFinite(value) || value <= 0) return;
+  try {
+    window.localStorage.setItem(AUTH_SESSION_STARTED_AT_KEY, String(Math.round(value)));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function clearAuthSessionStartedAtMs() {
+  try {
+    window.localStorage.removeItem(AUTH_SESSION_STARTED_AT_KEY);
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function enforceAuthSessionWindow(session) {
+  const maxHours = getAuthSessionMaxHours();
+  const maxMs = maxHours * 60 * 60 * 1000;
+  const now = Date.now();
+
+  let startedAt = readAuthSessionStartedAtMs();
+  if (!startedAt) {
+    const fromUser = Date.parse(String(session?.user?.last_sign_in_at || ""));
+    startedAt = Number.isFinite(fromUser) && fromUser > 0 ? fromUser : now;
+    writeAuthSessionStartedAtMs(startedAt);
+  }
+
+  if (now - startedAt > maxMs) {
+    return {
+      expired: true,
+      message: `Sessão expirada após ${maxHours}h. Faça login novamente.`,
+    };
+  }
+
+  return { expired: false, message: "" };
+}
+
 function resetAuthContext() {
+  clearProtectedFileAccessUrlCache();
+  clearAuthSessionStartedAtMs();
   state.auth.session = null;
   state.auth.accessToken = "";
   state.auth.user = null;
@@ -592,6 +742,16 @@ async function handleAuthSession(session, { refreshOnLogin = true } = {}) {
     resetAuthContext();
     setAuthOverlayVisible(true);
     setStatus("Faça login para acessar o painel.", "info");
+    return;
+  }
+
+  const sessionWindow = enforceAuthSessionWindow(session);
+  if (sessionWindow.expired) {
+    await state.auth.client?.auth.signOut().catch(() => {});
+    resetAuthContext();
+    setAuthOverlayVisible(true);
+    setAuthMessage(sessionWindow.message, "warning");
+    setStatus(sessionWindow.message, "warning");
     return;
   }
 
@@ -769,17 +929,30 @@ function buildReportCard(report) {
   const hydration = summary.hydration || {};
   const nutrition = summary.nutrition || {};
   const workouts = summary.workouts || {};
+  const range = summary.range || {};
+  const quality = nutrition.quality_distribution || {};
+  const periodLabel =
+    report.period === "weekly" ? "semanal" : report.period === "monthly" ? "mensal" : "diário";
+  const waterStatusClass = Number(hydration.goal_progress_pct || 0) >= 100 ? "quality-bom" : "quality-moderado";
+  const topHints = Array.isArray(summary.action_hints) ? summary.action_hints.slice(0, 2) : [];
+  const badMeals = Number(quality.ruim || 0) + Number(quality["nunca coma"] || 0);
 
   return `
     <article class="history-item report-item">
       <header>
         <strong>${escapeHtml(reportDate)}</strong>
-        <span class="muted">${escapeHtml(report.period || "daily")}</span>
+        <span class="tag quality-default">${escapeHtml(periodLabel)}</span>
       </header>
-      <p>Água: <strong>${fmtNumber(hydration.total_ml, 0)} ml</strong> (${fmtNumber(hydration.goal_progress_pct, 0)}%)</p>
-      <p>Refeições: <strong>${fmtNumber(nutrition.total_entries, 0)}</strong></p>
-      <p>Treinos: <strong>${fmtNumber(workouts.total_sessions, 0)}</strong></p>
-      <p class="muted">${escapeHtml((summary.action_hints || [])[0] || "Sem recomendações.")}</p>
+      <p class="muted">Período base: ${fmtDate(range.start)} até ${fmtDate(range.end)}</p>
+      <p>Água: <strong>${fmtNumber(hydration.total_ml, 0)} ml</strong> <span class="tag ${waterStatusClass}">${fmtNumber(hydration.goal_progress_pct, 0)}%</span></p>
+      <p>Refeições: <strong>${fmtNumber(nutrition.total_entries, 0)}</strong> | Treinos: <strong>${fmtNumber(workouts.total_sessions, 0)}</strong></p>
+      <p>Macros médios: ${fmtNumber(nutrition.avg_calories, 0)} kcal | P ${fmtNumber(nutrition.avg_protein_g, 0)}g | C ${fmtNumber(nutrition.avg_carbs_g, 0)}g | G ${fmtNumber(nutrition.avg_fat_g, 0)}g</p>
+      <p>Risco alimentar no período: <strong>${fmtNumber(badMeals, 0)}</strong> refeição(ões) em ruim/crítico</p>
+      ${
+        topHints.length
+          ? `<p class="muted">Plano prático: ${escapeHtml(topHints.join(" | "))}</p>`
+          : "<p class=\"muted\">Plano prático: manter consistência do período.</p>"
+      }
     </article>
   `;
 }
@@ -872,8 +1045,10 @@ function renderMetricCards() {
   }
 
   const latestBio =
-    state.cache.bioimpedance[0] ||
-    (!hasActiveDateFilter() ? state.cache.dashboard?.overview?.latest_bioimpedance || null : null);
+    state.cache.bioimpedanceAll?.[0] ||
+    state.cache.bioimpedance?.[0] ||
+    state.cache.dashboard?.overview?.latest_bioimpedance ||
+    null;
   const clinicalInsights = overview?.clinical?.insights || [];
   const bioFatInsight = clinicalInsights.find((item) => item.id === "bio_fat") || null;
 
@@ -888,8 +1063,8 @@ function renderMetricCards() {
 
   if (bioFatSubNode) {
     bioFatSubNode.textContent = bioFatInsight
-      ? `${clinicalLabel(bioFatInsight)} (${bioFatInsight.score}%)`
-      : "ultimo registro";
+      ? `${clinicalLabel(bioFatInsight)} (${bioFatInsight.score}%) | histórico completo`
+      : "histórico completo (fora do filtro)";
   }
 
   if (bioFatIdealNode) {
@@ -932,7 +1107,11 @@ function renderProfileSummary() {
   const overview = state.cache.dashboard?.overview || {};
   const profile = state.cache.profile || overview.profile || null;
   const latestMeasurement = state.cache.measurements[0] || overview.latest_measurement || null;
-  const latestBio = state.cache.bioimpedance[0] || overview.latest_bioimpedance || null;
+  const latestBio =
+    state.cache.bioimpedanceAll?.[0] ||
+    state.cache.bioimpedance?.[0] ||
+    overview.latest_bioimpedance ||
+    null;
 
   if (!profile && !latestMeasurement && !latestBio) {
     cardsNode.innerHTML = emptyState("Preencha perfil e medidas para montar seu resumo corporal.");
@@ -1172,18 +1351,46 @@ function renderCadastroPanel() {
 
 function renderProgressPhotos() {
   const container = document.getElementById("progress-photo-gallery");
+  const toggleButton = document.getElementById("toggle-progress-photos");
   if (!container) return;
 
-  const photos = (state.cache.measurements || [])
+  const photos = (state.cache.measurementsAll || state.cache.measurements || [])
     .filter((item) => item.progress_photo_url)
-    .slice(0, 12);
+    .slice(0, 24);
+
+  if (toggleButton) {
+    toggleButton.textContent = state.ui.showProgressPhotos
+      ? "Ocultar miniaturas"
+      : `Mostrar miniaturas (${photos.length})`;
+    toggleButton.disabled = photos.length === 0;
+  }
 
   if (!photos.length) {
-    container.innerHTML = emptyState("Sem fotos de evolução no período. Envie uma foto no bloco de registros.");
+    container.classList.remove("is-collapsed");
+    container.innerHTML = emptyState("Sem fotos de evolução ainda. Envie uma foto no bloco de registros.");
     return;
   }
 
+  if (!state.ui.showProgressPhotos) {
+    container.classList.add("is-collapsed");
+    const latest = photos[0];
+    container.innerHTML = `
+      <article class="progress-photo-summary">
+        <p><strong>${photos.length}</strong> foto(s) de evolução no histórico completo.</p>
+        <p class="muted">Última foto: ${escapeHtml(fmtDate(latest.recorded_at))}. Clique em <strong>Mostrar miniaturas</strong> para visualizar.</p>
+      </article>
+    `;
+    return;
+  }
+
+  container.classList.remove("is-collapsed");
   container.innerHTML = photos.map((item) => {
+    const rawPhotoUrl = String(item.progress_photo_url || "").trim();
+    const safePhotoUrl = escapeHtml(rawPhotoUrl);
+    const isProtectedUrl = isProtectedFileOpenUrl(rawPhotoUrl);
+    const imageTag = isProtectedUrl
+      ? `<img data-protected-src="${safePhotoUrl}" alt="Foto de evolução em ${escapeHtml(fmtDate(item.recorded_at))}" loading="lazy" />`
+      : `<img src="${safePhotoUrl}" alt="Foto de evolução em ${escapeHtml(fmtDate(item.recorded_at))}" loading="lazy" />`;
     const weight = toNumberOrNull(item.weight_kg);
     const waist = toNumberOrNull(item.waist_cm);
     const captionParts = [];
@@ -1192,12 +1399,23 @@ function renderProgressPhotos() {
 
     return `
       <article class="progress-photo-card">
-        <img src="${escapeHtml(item.progress_photo_url)}" alt="Foto de evolução em ${escapeHtml(fmtDate(item.recorded_at))}" loading="lazy" />
+        <a class="file-link" href="${safePhotoUrl}" target="_blank" rel="noreferrer">
+          ${imageTag}
+        </a>
         <p class="progress-photo-caption"><strong>${escapeHtml(fmtDate(item.recorded_at))}</strong></p>
         <p class="progress-photo-caption">${escapeHtml(captionParts.join(" | ") || "Sem medidas associadas")}</p>
+        <button
+          class="btn-ghost"
+          type="button"
+          data-progress-photo-delete="${escapeHtml(String(item.id || ""))}"
+        >
+          Excluir foto
+        </button>
       </article>
     `;
   }).join("");
+
+  hydrateProtectedImages(container).catch(() => {});
 }
 
 function renderHistoryList(containerId, items, toHtml) {
@@ -2322,7 +2540,7 @@ function renderDailyComparison() {
   const mealsRatio = Math.min(1, nutritionCount / 4);
   const workoutRatio = Math.min(1, workoutMinutes / 30);
 
-  const latestExam = (state.cache.exams || [])[0] || null;
+  const latestExam = (state.cache.examsAll || [])[0] || (state.cache.exams || [])[0] || null;
   const examAlerts = examAlertsFromMarkers(latestExam?.markers, 3);
   const latestHints = overview?.latest_reports?.[0]?.summary?.action_hints || [];
 
@@ -2342,8 +2560,8 @@ function renderDailyComparison() {
       <p class="muted">Ajustes rápidos: ${(latestHints[0] && escapeHtml(latestHints[0])) || "seguir consistência diária"}</p>
       ${
         examAlerts.length
-          ? `<p class="muted">Exame recente: ${examAlerts.map((item) => escapeHtml(item)).join(" | ")}</p>`
-          : ""
+          ? `<p class="muted">Exame recente (histórico completo): ${examAlerts.map((item) => escapeHtml(item)).join(" | ")}</p>`
+          : `<p class="muted">Exame recente (histórico completo): sem alerta clínico prioritário.</p>`
       }
     </article>
   `;
@@ -3745,7 +3963,8 @@ function renderWeightChart() {
 }
 
 function renderFatChart() {
-  const points = sortAscByDate(state.cache.bioimpedance, "recorded_at")
+  const source = state.cache.bioimpedanceAll?.length ? state.cache.bioimpedanceAll : state.cache.bioimpedance;
+  const points = sortAscByDate(source, "recorded_at")
     .filter((item) => {
       const fat = toNumberOrNull(item.body_fat_pct);
       const water = toNumberOrNull(item.body_water_pct);
@@ -4070,7 +4289,7 @@ async function loadAllData() {
     apiJson(`/api/profile?${queryStringFromObject({ user_id: userId })}`),
     apiJson(`/api/ai/info?${queryStringFromObject({ user_id: userId })}`).catch((error) => ({ ok: false, error: error.message })),
     apiJson(`/api/system/usage?${queryStringFromObject({ user_id: userId })}`).catch((error) => ({ ok: false, error: error.message })),
-    apiJson(`/api/reports?${queryStringFromObject({ user_id: userId, period: "daily", limit: 14 })}`),
+    apiJson(`/api/reports?${queryStringFromObject({ user_id: userId, limit: 30 })}`),
     apiJson(`/api/measurements?${queryStringFromObject({ ...common, limit: 200 })}`),
     apiJson(`/api/measurements?${queryStringFromObject({ user_id: userId, limit: 300 })}`),
     apiJson(`/api/bioimpedance?${queryStringFromObject({ ...common, limit: 200 })}`),
@@ -4222,7 +4441,60 @@ function setupDateFilter() {
   updateFilterSummary();
 }
 
+async function deleteProgressPhotoRecord(recordId) {
+  const id = String(recordId || "").trim();
+  if (!id) throw new Error("ID da foto inválido.");
+
+  const userId = await ensureUser();
+  const query = queryStringFromObject({ user_id: userId });
+  await apiJson(`/api/measurements/${encodeURIComponent(id)}?${query}`, {
+    method: "DELETE",
+  });
+}
+
 function setupActions() {
+  document.addEventListener("click", async (event) => {
+    const photoDeleteButton = event.target.closest("button[data-progress-photo-delete]");
+    if (photoDeleteButton) {
+      const recordId = String(photoDeleteButton.dataset.progressPhotoDelete || "").trim();
+      if (!recordId) return;
+
+      const ok = window.confirm("Deseja excluir esta foto de evolução? Você poderá enviar outra em seguida.");
+      if (!ok) return;
+
+      try {
+        setStatus("Excluindo foto de evolução...", "info");
+        await deleteProgressPhotoRecord(recordId);
+        await refreshAllWithStatus("Foto removida com sucesso.");
+      } catch (err) {
+        setStatus(`Erro ao excluir foto: ${err.message}`, "error");
+      }
+      return;
+    }
+
+    const link = event.target.closest("a.file-link[href]");
+    if (!link) return;
+
+    const href = String(link.getAttribute("href") || "").trim();
+    if (!isProtectedFileOpenUrl(href)) return;
+
+    event.preventDefault();
+    try {
+      setStatus("Abrindo anexo...", "info");
+      const accessUrl = await resolveProtectedFileAccessUrl(href);
+      window.open(accessUrl, "_blank", "noopener,noreferrer");
+      setStatus("Anexo aberto.", "success");
+    } catch (err) {
+      setStatus(`Erro ao abrir anexo: ${err.message}`, "error");
+    }
+  });
+
+  document.getElementById("toggle-progress-photos")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    state.ui.showProgressPhotos = !state.ui.showProgressPhotos;
+    renderProgressPhotos();
+  });
+
   document.getElementById("refresh-dashboard")?.addEventListener("click", async () => {
     try {
       setStatus("Atualizando painel...", "info");
@@ -4235,15 +4507,26 @@ function setupActions() {
   document.getElementById("generate-daily-report")?.addEventListener("click", async () => {
     try {
       const userId = await ensureUser();
-      const today = new Date().toISOString().slice(0, 10);
-      setStatus("Gerando relatório diário...", "info");
+      const today = todayInputValue();
+      const normalized = normalizeFilterRange(state.filter.from, state.filter.to, today);
+      const from = normalized.from || today;
+      const to = normalized.to || from;
+
+      const fromDate = parseDateForDisplay(from);
+      const toDate = parseDateForDisplay(to);
+      const dayMs = 24 * 60 * 60 * 1000;
+      const rangeDays = fromDate && toDate ? Math.max(1, Math.round((toDate - fromDate) / dayMs) + 1) : 1;
+      const period = rangeDays <= 1 ? "daily" : rangeDays <= 7 ? "weekly" : "monthly";
+      const periodLabel = period === "weekly" ? "semanal" : period === "monthly" ? "mensal" : "diário";
+
+      setStatus(`Gerando relatório ${periodLabel} com base no período filtrado...`, "info");
 
       await apiJson("/api/reports/generate", {
         method: "POST",
-        body: JSON.stringify({ user_id: userId, period: "daily", report_date: today }),
+        body: JSON.stringify({ user_id: userId, period, report_date: to }),
       });
 
-      await refreshAllWithStatus("Relatório diário gerado com sucesso.");
+      await refreshAllWithStatus(`Relatório ${periodLabel} gerado com sucesso.`);
     } catch (err) {
       setStatus(`Erro ao gerar relatório: ${err.message}`, "error");
     }

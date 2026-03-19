@@ -164,6 +164,37 @@ async function listBodyMeasurements(userId, { from, to, limit = 30 } = {}) {
   return data || [];
 }
 
+async function getBodyMeasurementById(userId, measurementId) {
+  const { data, error } = await supabase
+    .from("body_measurements")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("id", measurementId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Erro ao buscar medida corporal: ${error.message}`);
+  }
+
+  return data || null;
+}
+
+async function deleteBodyMeasurement(userId, measurementId) {
+  const { data, error } = await supabase
+    .from("body_measurements")
+    .delete()
+    .eq("user_id", userId)
+    .eq("id", measurementId)
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Erro ao remover medida corporal: ${error.message}`);
+  }
+
+  return data || null;
+}
+
 async function createBioimpedanceRecord({
   userId,
   body_fat_pct,
@@ -507,6 +538,8 @@ module.exports = {
   listGoals,
   createBodyMeasurement,
   listBodyMeasurements,
+  getBodyMeasurementById,
+  deleteBodyMeasurement,
   createBioimpedanceRecord,
   listBioimpedanceRecords,
   getBioimpedanceRecordById,

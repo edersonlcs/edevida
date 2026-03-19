@@ -12,6 +12,7 @@ const {
   bodyMeasurementCreateController,
   bodyMeasurementProgressPhotoUploadController,
   bodyMeasurementListController,
+  bodyMeasurementDeleteController,
   bioimpedanceCreateController,
   bioimpedanceUploadController,
   bioimpedanceListController,
@@ -65,6 +66,7 @@ router.post("/api/goals", userGoalCreateController);
 router.get("/api/measurements", bodyMeasurementListController);
 router.post("/api/measurements", bodyMeasurementCreateController);
 router.post("/api/measurements/progress-photo", upload.single("file"), bodyMeasurementProgressPhotoUploadController);
+router.delete("/api/measurements/:id", bodyMeasurementDeleteController);
 
 router.get("/api/bioimpedance", bioimpedanceListController);
 router.post("/api/bioimpedance", bioimpedanceCreateController);

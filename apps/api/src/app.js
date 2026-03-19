@@ -16,11 +16,7 @@ function createApp() {
   app.use("/uploads", express.static(uploadsPath));
 
   app.get("/", (_req, res) => {
-    res.json({
-      message: "EdeVida API online",
-      docs: "Use /health para verificar disponibilidade",
-      painel: "/painel",
-    });
+    res.redirect(302, "/painel");
   });
 
   app.get("/painel", (_req, res) => {
