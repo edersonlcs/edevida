@@ -2046,6 +2046,38 @@ function mealSlotLabel(slot) {
   return MEAL_SLOTS.find((item) => item.key === slot)?.label || "Outro";
 }
 
+function activateTabByName(tabName) {
+  const button =
+    document.querySelector(`.tab-button[data-tab="${tabName}"]`) ||
+    document.querySelector(`.mobile-tab-button[data-tab="${tabName}"]`);
+  if (!button) return false;
+  button.click();
+  return true;
+}
+
+function openQuickMealRegister(slotKey) {
+  const normalizedSlot = MEAL_SLOTS.some((item) => item.key === slotKey) ? slotKey : "outro";
+  activateTabByName("registros");
+
+  const draftSlotSelect = document.querySelector('#nutrition-draft-form select[name="meal_slot"]');
+  if (draftSlotSelect) {
+    draftSlotSelect.value = normalizedSlot;
+  }
+
+  const modeSelect = document.querySelector('#nutrition-form select[name="mode"]');
+  if (modeSelect && modeSelect.value !== "save") {
+    modeSelect.value = "draft";
+  }
+
+  window.setTimeout(() => {
+    document.getElementById("registro-alimentos")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const textArea = document.querySelector('#nutrition-form textarea[name="text"]');
+    textArea?.focus();
+  }, 120);
+
+  setStatus(`Registro rápido aberto para ${mealSlotLabel(normalizedSlot)}.`, "info");
+}
+
 function mealSlotOptionsHtml(selectedSlot) {
   const normalizedSelected = MEAL_SLOTS.some((item) => item.key === selectedSlot) ? selectedSlot : "outro";
   return MEAL_SLOTS.map((slot) => `
@@ -3438,6 +3470,11 @@ function renderNutritionDashboard() {
         <p class="calorie-line ${metric.statusClass}">
           <strong>${fmtNumber(metric.calories, 0)} / ${fmtNumber(metric.goal, 0)} kcal</strong>
         </p>
+        <div class="meal-card-actions">
+          <button class="btn-ghost meal-quick-register-btn" type="button" data-quick-meal-slot="${slot.key}">
+            + Registrar ${slot.label}
+          </button>
+        </div>
         <details class="meal-inline-details">
           <summary>Detalhado de alimentação</summary>
           <div class="meal-inline-content">
@@ -4601,6 +4638,29 @@ async function deleteProgressPhotoRecord(recordId) {
 
 function setupActions() {
   document.addEventListener("click", async (event) => {
+    const quickMealButton = event.target.closest("button[data-quick-meal-slot]");
+    if (quickMealButton) {
+      event.preventDefault();
+      const slotKey = String(quickMealButton.dataset.quickMealSlot || "").trim();
+      openQuickMealRegister(slotKey);
+      return;
+    }
+
+    const jumpButton = event.target.closest("button[data-jump-target]");
+    if (jumpButton) {
+      event.preventDefault();
+      const targetId = String(jumpButton.dataset.jumpTarget || "").trim();
+      if (targetId) {
+        activateTabByName("registros");
+        window.setTimeout(() => {
+          const target = document.getElementById(targetId);
+          target?.scrollIntoView({ behavior: "smooth", block: "start" });
+          target?.querySelector("details.registros-collapse-card")?.setAttribute("open", "open");
+        }, 100);
+      }
+      return;
+    }
+
     const photoDeleteButton = event.target.closest("button[data-progress-photo-delete]");
     if (photoDeleteButton) {
       const recordId = String(photoDeleteButton.dataset.progressPhotoDelete || "").trim();

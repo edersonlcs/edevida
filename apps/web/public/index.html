@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/web/styles.css?v=20260320d" />
+    <link rel="stylesheet" href="/web/styles.css?v=20260320e" />
   </head>
   <body>
     <div class="bg-layer"></div>
@@ -33,47 +33,49 @@
     </section>
 
     <main class="layout">
-      <nav id="tabs-nav" class="tabs card">
-        <button class="tab-button is-active" data-tab="dashboard">Dashboard</button>
-        <button class="tab-button" data-tab="nutricao">Nutrição</button>
-        <button class="tab-button" data-tab="registros">Registros</button>
-        <button class="tab-button" data-tab="anexos">Anexos</button>
-        <button class="tab-button" data-tab="exames">Exames</button>
-        <button class="tab-button" data-tab="historico">Histórico</button>
-        <button class="tab-button" data-tab="cadastro">Info</button>
-        <button class="tab-button" data-tab="ia">IA</button>
-        <div id="auth-user-bar" class="auth-user-bar is-hidden">
-          <span id="auth-user-label" class="muted">Sessão autenticada</span>
-          <button id="auth-logout-btn" class="btn-ghost" type="button">Sair</button>
-        </div>
-      </nav>
+      <div class="sticky-mobile-shell">
+        <nav id="tabs-nav" class="tabs card">
+          <button class="tab-button is-active" data-tab="dashboard">Dashboard</button>
+          <button class="tab-button" data-tab="nutricao">Nutrição</button>
+          <button class="tab-button" data-tab="registros">Registros</button>
+          <button class="tab-button" data-tab="anexos">Anexos</button>
+          <button class="tab-button" data-tab="exames">Exames</button>
+          <button class="tab-button" data-tab="historico">Histórico</button>
+          <button class="tab-button" data-tab="cadastro">Info</button>
+          <button class="tab-button" data-tab="ia">IA</button>
+          <div id="auth-user-bar" class="auth-user-bar is-hidden">
+            <span id="auth-user-label" class="muted">Sessão autenticada</span>
+            <button id="auth-logout-btn" class="btn-ghost" type="button">Sair</button>
+          </div>
+        </nav>
 
-      <section class="card filters-card">
-        <h3>Data</h3>
-        <form id="date-filter-form" class="filters-row">
-          <button class="btn-ghost filter-nav-btn" type="button" id="filter-prev-day" aria-label="Dia anterior" title="Dia anterior">◀</button>
+        <section class="card filters-card">
+          <h3>Data</h3>
+          <form id="date-filter-form" class="filters-row">
+            <button class="btn-ghost filter-nav-btn" type="button" id="filter-prev-day" aria-label="Dia anterior" title="Dia anterior">◀</button>
 
-          <label class="filter-field compact-field filter-from-field">
-            <span class="sr-only">De</span>
-            <input id="filter-from" name="from" type="date" />
-          </label>
+            <label class="filter-field compact-field filter-from-field">
+              <span class="sr-only">De</span>
+              <input id="filter-from" name="from" type="date" />
+            </label>
 
-          <span class="filter-separator" aria-hidden="true">até</span>
+            <span class="filter-separator" aria-hidden="true">até</span>
 
-          <label class="filter-field compact-field filter-to-field">
-            <span class="sr-only">Até</span>
-            <input id="filter-to" name="to" type="date" />
-          </label>
+            <label class="filter-field compact-field filter-to-field">
+              <span class="sr-only">Até</span>
+              <input id="filter-to" name="to" type="date" />
+            </label>
 
-          <button class="btn-ghost filter-nav-btn" type="button" id="filter-next-day" aria-label="Próximo dia" title="Próximo dia">▶</button>
+            <button class="btn-ghost filter-nav-btn" type="button" id="filter-next-day" aria-label="Próximo dia" title="Próximo dia">▶</button>
 
-          <button class="btn-secondary filter-apply-btn" type="submit">Aplicar</button>
-          <button class="btn-ghost filter-today-btn" type="button" id="clear-date-filter">Hoje</button>
+            <button class="btn-secondary filter-apply-btn" type="submit">Aplicar</button>
+            <button class="btn-ghost filter-today-btn" type="button" id="clear-date-filter">Hoje</button>
 
-          <p id="filter-summary" class="muted filter-summary">Período: últimos 30 dias</p>
-        </form>
-        <div id="status-message" class="status-message status-inline">Carregando dados...</div>
-      </section>
+            <p id="filter-summary" class="muted filter-summary">Período: últimos 30 dias</p>
+          </form>
+          <div id="status-message" class="status-message status-inline">Carregando dados...</div>
+        </section>
+      </div>
 
       <section id="tab-dashboard" class="tab-panel is-active">
         <section class="metrics metrics-top">
@@ -339,6 +341,14 @@
             <span class="tag quality-default">Outros lançamentos</span>
             <span class="tag quality-moderado">Histórico em aba própria</span>
           </div>
+          <div class="registros-quick-actions">
+            <button class="btn-ghost registros-quick-btn" type="button" data-jump-target="food-card-text">Texto</button>
+            <button class="btn-ghost registros-quick-btn" type="button" data-jump-target="food-card-photo">Foto</button>
+            <button class="btn-ghost registros-quick-btn" type="button" data-jump-target="food-card-audio">Voz</button>
+            <button class="btn-ghost registros-quick-btn" type="button" data-jump-target="food-card-draft">Rascunho</button>
+            <button class="btn-ghost registros-quick-btn" type="button" data-jump-target="hydration-card">Água</button>
+            <button class="btn-ghost registros-quick-btn" type="button" data-jump-target="workout-card">Treino</button>
+          </div>
         </article>
 
         <article class="card registros-section">
@@ -346,7 +356,7 @@
             <h3>Lançamentos do dia a dia</h3>
             <p class="muted">Fluxo principal para uso diário.</p>
           </header>
-          <section class="registros-subsection food-subsection">
+          <section id="registro-alimentos" class="registros-subsection food-subsection">
             <header class="registros-subsection-header">
               <h4>1) Registro dos alimentos</h4>
               <p class="muted">Use texto, foto ou voz e confirme no rascunho antes de registrar.</p>
@@ -357,7 +367,7 @@
               </div>
             </header>
             <section class="registros-grid food-grid">
-              <article class="card food-card food-card-text">
+              <article id="food-card-text" class="card food-card food-card-text">
                 <h3>Analisar alimentação (texto)</h3>
                 <form id="nutrition-form" class="stack">
                   <select name="mode">
@@ -379,34 +389,38 @@
                 <button id="nutrition-chat-clear" class="btn-ghost" type="button">Limpar conversa</button>
               </article>
 
-              <article class="card food-card food-card-photo">
-                <h3>Analisar alimentação (foto)</h3>
-                <form id="nutrition-image-form" class="stack">
-                  <div class="photo-input-grid">
-                    <label class="photo-input-option">
-                      <span>Tirar foto agora</span>
-                      <input name="file_camera" type="file" accept="image/*" capture="environment" />
-                    </label>
-                    <label class="photo-input-option">
-                      <span>Escolher da galeria</span>
-                      <input name="file_gallery" type="file" accept="image/*" />
-                    </label>
-                  </div>
-                  <p class="muted">No celular: use câmera ou galeria. No computador: escolha da galeria.</p>
-                  <input name="caption" type="text" placeholder="Legenda opcional da refeição" />
-                  <button class="btn-primary" type="submit">Analisar foto para rascunho</button>
-                </form>
+              <article id="food-card-photo" class="card food-card food-card-photo">
+                <details class="registros-collapse-card">
+                  <summary>Analisar alimentação (foto)</summary>
+                  <form id="nutrition-image-form" class="stack">
+                    <div class="photo-input-grid">
+                      <label class="photo-input-option">
+                        <span>Tirar foto agora</span>
+                        <input name="file_camera" type="file" accept="image/*" capture="environment" />
+                      </label>
+                      <label class="photo-input-option">
+                        <span>Escolher da galeria</span>
+                        <input name="file_gallery" type="file" accept="image/*" />
+                      </label>
+                    </div>
+                    <p class="muted">No celular: use câmera ou galeria. No computador: escolha da galeria.</p>
+                    <input name="caption" type="text" placeholder="Legenda opcional da refeição" />
+                    <button class="btn-primary" type="submit">Analisar foto para rascunho</button>
+                  </form>
+                </details>
               </article>
 
-              <article class="card food-card food-card-audio">
-                <h3>Analisar alimentação (voz)</h3>
-                <form id="nutrition-audio-form" class="stack">
-                  <input name="file" type="file" accept="audio/*" capture required />
-                  <button class="btn-primary" type="submit">Analisar áudio para rascunho</button>
-                </form>
+              <article id="food-card-audio" class="card food-card food-card-audio">
+                <details class="registros-collapse-card">
+                  <summary>Analisar alimentação (voz)</summary>
+                  <form id="nutrition-audio-form" class="stack">
+                    <input name="file" type="file" accept="audio/*" capture required />
+                    <button class="btn-primary" type="submit">Analisar áudio para rascunho</button>
+                  </form>
+                </details>
               </article>
 
-              <article class="card food-card food-card-draft">
+              <article id="food-card-draft" class="card food-card food-card-draft">
                 <h3>Rascunho de refeição (antes de registrar)</h3>
                 <p class="muted">Resultado da análise aparece aqui. Revise, corrija e registre quando estiver tudo certo.</p>
                 <div id="nutrition-draft-preview" class="output output-rich">Sem rascunho ativo.</div>
@@ -446,7 +460,7 @@
               <p class="muted">Hidratação e treino. Exames e bioimpedância são por anexo na aba <strong>Anexos</strong>.</p>
             </header>
             <section class="grid-2 registros-grid">
-              <article class="card">
+              <article id="hydration-card" class="card">
                 <h3>Registrar água</h3>
                 <form id="hydration-form" class="stack">
                   <input name="amount_ml" type="number" min="50" step="50" placeholder="Quantidade em ml" required />
@@ -455,7 +469,7 @@
                 </form>
               </article>
 
-              <article class="card">
+              <article id="workout-card" class="card">
                 <h3>Treino realizado</h3>
                 <form id="workout-form" class="stack two-cols">
                   <input name="activity_type" type="text" placeholder="Atividade (musculação, corrida...)" required />
@@ -661,17 +675,8 @@
       </footer>
     </main>
 
-    <nav id="mobile-tabbar" class="mobile-tabbar" aria-label="Navegação principal do app">
-      <button class="mobile-tab-button is-active" data-tab="dashboard">Início</button>
-      <button class="mobile-tab-button" data-tab="nutricao">Nutrição</button>
-      <button class="mobile-tab-button" data-tab="registros">Registros</button>
-      <button class="mobile-tab-button" data-tab="anexos">Anexos</button>
-      <button class="mobile-tab-button" data-tab="exames">Exames</button>
-      <button class="mobile-tab-button" data-tab="cadastro">Info</button>
-    </nav>
-
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="/web/app.js?v=20260320b" type="module"></script>
+    <script src="/web/app.js?v=20260320c" type="module"></script>
   </body>
 </html>
