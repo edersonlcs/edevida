@@ -2168,3 +2168,121 @@ h4,
     line-height: 1.2;
   }
 }
+
+.meal-inline-details {
+  margin-top: 0.42rem;
+  border-top: 1px dashed rgba(35, 44, 61, 0.18);
+  padding-top: 0.42rem;
+}
+
+.meal-inline-details summary {
+  list-style: none;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 0.79rem;
+  color: #586172;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.meal-inline-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.meal-inline-details summary::before {
+  content: "▸";
+  font-size: 0.72rem;
+  transform: translateY(-1px);
+}
+
+.meal-inline-details[open] summary::before {
+  content: "▾";
+}
+
+.meal-inline-content {
+  margin-top: 0.45rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+@media (max-width: 700px) {
+  body {
+    padding-top: max(0.2rem, env(safe-area-inset-top));
+  }
+
+  .layout {
+    margin-top: calc(env(safe-area-inset-top) + 1.35rem);
+  }
+
+  .tabs {
+    top: calc(env(safe-area-inset-top) + 0.55rem);
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tabs .tab-button {
+    flex: 0 0 auto;
+  }
+
+  .tabs #auth-user-bar {
+    display: none !important;
+  }
+
+  .filters-card {
+    padding: 0.45rem 0.5rem;
+    gap: 0.26rem;
+  }
+
+  .filters-card h3 {
+    font-size: 0.82rem;
+    margin-bottom: 0.04rem;
+  }
+
+  .filters-row {
+    grid-template-columns: 32px minmax(0, 1fr) 32px 56px;
+    gap: 0.22rem;
+  }
+
+  .compact-field input {
+    min-height: 31px;
+    padding: 0.28rem 0.38rem;
+    font-size: 0.79rem;
+  }
+
+  .filter-nav-btn {
+    min-height: 31px;
+    padding: 0.16rem;
+    font-size: 0.74rem;
+  }
+
+  .filter-apply-btn,
+  .filter-today-btn {
+    min-height: 31px;
+    padding: 0.2rem 0.28rem;
+    font-size: 0.72rem;
+    border-radius: 9px;
+  }
+
+  .filter-summary {
+    display: none;
+  }
+
+  .status-inline {
+    margin-top: 0.04rem;
+    padding: 0.22rem 0.34rem;
+    font-size: 0.7rem;
+    border-radius: 8px;
+  }
+
+  .meal-inline-details summary {
+    font-size: 0.74rem;
+  }
+}

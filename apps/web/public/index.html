@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/web/styles.css?v=20260319p" />
+    <link rel="stylesheet" href="/web/styles.css?v=20260320a" />
   </head>
   <body>
     <div class="bg-layer"></div>
@@ -49,7 +49,7 @@
       </nav>
 
       <section class="card filters-card">
-        <h3>Filtro por data</h3>
+        <h3>Data</h3>
         <form id="date-filter-form" class="filters-row">
           <button class="btn-ghost filter-nav-btn" type="button" id="filter-prev-day" aria-label="Dia anterior" title="Dia anterior">◀</button>
 
@@ -229,18 +229,8 @@
           <div id="nutrition-macros-overview" class="macro-grid"></div>
         </article>
 
-        <article class="card">
-          <details id="nutrition-details-toggle" class="nutrition-details-toggle">
-            <summary>
-              <span>Detalhado de alimentação</span>
-            </summary>
-            <div id="nutrition-details-list" class="history-list"></div>
-          </details>
-        </article>
-
         <article class="card nutrition-weekly-panel">
           <h3>Análise semanal por grupo (segunda a domingo)</h3>
-          <p class="muted">Resumo fixo da semana atual, independente do filtro de data.</p>
           <div id="nutrition-weekly-groups" class="weekly-group-grid"></div>
         </article>
       </section>
@@ -682,6 +672,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="/web/app.js?v=20260319p" type="module"></script>
+    <script src="/web/app.js?v=20260320a" type="module"></script>
   </body>
 </html>

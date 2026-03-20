@@ -2837,7 +2837,6 @@ function renderNutritionDashboard() {
   const waterSubNode = document.getElementById("nutrition-water-sub");
   const waterDistributionNode = document.getElementById("nutrition-water-distribution");
   const mealsContainer = document.getElementById("nutrition-slot-cards");
-  const detailsContainer = document.getElementById("nutrition-details-list");
   const weeklyContainer = document.getElementById("nutrition-weekly-groups");
   const caloriesTotalNode = document.getElementById("nutrition-calories-total");
   const caloriesMetaNode = document.getElementById("nutrition-calories-meta");
@@ -2849,7 +2848,6 @@ function renderNutritionDashboard() {
     !waterSubNode ||
     !waterDistributionNode ||
     !mealsContainer ||
-    !detailsContainer ||
     !caloriesTotalNode ||
     !caloriesMetaNode ||
     !workoutCaloriesNode ||
@@ -2858,7 +2856,7 @@ function renderNutritionDashboard() {
     return;
   }
 
-  bindNutritionEntryEditEvents(detailsContainer);
+  bindNutritionEntryEditEvents(mealsContainer);
 
   const allNutritionEntries = state.cache.nutrition || [];
   const nutritionEntries = mealNutritionEntries(allNutritionEntries);
@@ -3091,24 +3089,7 @@ function renderNutritionDashboard() {
     })
     .join("");
 
-  mealsContainer.innerHTML = MEAL_SLOTS_CORE.map((slot) => {
-    const metric = slotMetrics[slot.key] || { entries: [], calories: 0, goal: 0, statusClass: "calorie-ok" };
-    const entries = metric.entries || [];
-    const latest = entries[0] || null;
-    const latestQuality = latest?.meal_quality || "sem registro";
-
-    return `
-      <article class="meal-card">
-        <h4>${slot.label}</h4>
-        <p><strong>${entries.length}</strong> registro(s)</p>
-        <p class="tag ${qualityClass(latestQuality)}">${escapeHtml(qualityLabel(latestQuality))}</p>
-        <p class="calorie-line ${metric.statusClass}">
-          <strong>${fmtNumber(metric.calories, 0)} / ${fmtNumber(metric.goal, 0)} kcal</strong>
-        </p>
-        <p class="muted">Último: ${latest ? fmtDateTime(latest.recorded_at) : "-"}</p>
-      </article>
-    `;
-  }).join("");
+  let slotDetailCards = Object.fromEntries(MEAL_SLOTS_CORE.map((slot) => [slot.key, `<p class="muted">Sem registro neste período.</p>`]));
 
   const mealEntries = nutritionEntries.filter((entry) => {
     const slot = resolveMealSlot(entry);
@@ -3249,7 +3230,9 @@ function renderNutritionDashboard() {
     const message = allNutritionEntries.length
       ? "Há registros no período, mas nenhum foi identificado como refeição detalhável. Envie alimento por texto, foto ou áudio."
       : "Sem registros alimentares no período filtrado.";
-    detailsContainer.innerHTML = emptyState(message);
+    slotDetailCards = Object.fromEntries(
+      MEAL_SLOTS_CORE.map((slot) => [slot.key, `<p class="muted">${escapeHtml(message)}</p>`])
+    );
     renderWeeklyCards();
   } else {
     const groupedBySlot = Object.fromEntries(MEAL_SLOTS_CORE.map((slot) => [slot.key, []]));
@@ -3268,165 +3251,202 @@ function renderNutritionDashboard() {
       sugar: sugarConsumedG > sugarGoalG,
     };
 
-    detailsContainer.innerHTML = MEAL_SLOTS_CORE.map((slot) => {
-      const entries = groupedBySlot[slot.key] || [];
-      const slotReason = buildMealGroupReason(slot.key, entries);
-      const slotWeekly = weeklyInsights[slot.key];
-      const detailedEntries = entries.slice(0, 6).map((entry) => {
-        const quality = entry.meal_quality || "sem registro";
-        const foodItems = extractFoodItems(entry);
-        const enrichedFoodItems = buildFoodNutritionRows(entry, foodItems);
-        const summary = entry.analyzed_summary || mealTextPreview(entry);
-        const risk = detectDietRiskSignals(entry);
-        const entrySlot = resolveMealSlot(entry);
-        const entryTargets = mealMacroTargets(targets, entrySlot, 1);
-        const entryFatGood = enrichedFoodItems.reduce((acc, item) => acc + Number(item.fat_good_g || 0), 0);
-        const entryFatBad = enrichedFoodItems.reduce((acc, item) => acc + Number(item.fat_bad_g || 0), 0);
-        const entryProteinStatus = targetStatus(entry.estimated_protein_g, entryTargets.protein, { mode: "range", minRatio: 0.75, maxRatio: 1.5 });
-        const entryCarbsStatus = targetStatus(entry.estimated_carbs_g, entryTargets.carbs, { mode: "max" });
-        const entryFatStatus = targetStatus(entry.estimated_fat_g, entryTargets.fat, { mode: "max" });
-        const entryFatGoodStatus = targetStatus(entryFatGood, entryTargets.fat * 0.6, { mode: "min" });
-        const entryFatBadStatus = targetStatus(entryFatBad, entryTargets.fat * 0.4, { mode: "max" });
-        const editorFoodItemsText = serializeFoodItemsForEditor(enrichedFoodItems);
-        const editorRecordedAt = toDateTimeLocalInput(entry.recorded_at);
+    slotDetailCards = Object.fromEntries(
+      MEAL_SLOTS_CORE.map((slot) => {
+        const entries = groupedBySlot[slot.key] || [];
+        const slotReason = buildMealGroupReason(slot.key, entries);
+        const slotWeekly = weeklyInsights[slot.key];
+        const detailedEntries = entries
+          .slice(0, 6)
+          .map((entry) => {
+            const quality = entry.meal_quality || "sem registro";
+            const foodItems = extractFoodItems(entry);
+            const enrichedFoodItems = buildFoodNutritionRows(entry, foodItems);
+            const summary = entry.analyzed_summary || mealTextPreview(entry);
+            const risk = detectDietRiskSignals(entry);
+            const entrySlot = resolveMealSlot(entry);
+            const entryTargets = mealMacroTargets(targets, entrySlot, 1);
+            const entryFatGood = enrichedFoodItems.reduce((acc, item) => acc + Number(item.fat_good_g || 0), 0);
+            const entryFatBad = enrichedFoodItems.reduce((acc, item) => acc + Number(item.fat_bad_g || 0), 0);
+            const entryProteinStatus = targetStatus(entry.estimated_protein_g, entryTargets.protein, { mode: "range", minRatio: 0.75, maxRatio: 1.5 });
+            const entryCarbsStatus = targetStatus(entry.estimated_carbs_g, entryTargets.carbs, { mode: "max" });
+            const entryFatStatus = targetStatus(entry.estimated_fat_g, entryTargets.fat, { mode: "max" });
+            const entryFatGoodStatus = targetStatus(entryFatGood, entryTargets.fat * 0.6, { mode: "min" });
+            const entryFatBadStatus = targetStatus(entryFatBad, entryTargets.fat * 0.4, { mode: "max" });
+            const editorFoodItemsText = serializeFoodItemsForEditor(enrichedFoodItems);
+            const editorRecordedAt = toDateTimeLocalInput(entry.recorded_at);
 
-        const foodDetails = enrichedFoodItems.length
-          ? `
-          <div class="nutrition-food-list">
-            ${enrichedFoodItems.map((food) => {
-              const key = buildFoodKey(food.food_name);
-              const proteinSignal = excessContext.protein && topContributionSets.protein.has(key)
-                ? "signal-alert"
-                : contributionSignalClass(food.protein_g, totalProtein, { alertPct: 35, attentionPct: 22 });
-              const carbsSignal = excessContext.carbs && topContributionSets.carbs.has(key)
-                ? "signal-alert"
-                : contributionSignalClass(food.carbs_g, totalCarbs, { alertPct: 32, attentionPct: 18 });
-              const fatSignal = excessContext.fat && topContributionSets.fat.has(key)
-                ? "signal-alert"
-                : contributionSignalClass(food.fat_g, totalFat, { alertPct: 32, attentionPct: 18 });
-              const fatBadSignal = excessContext.fatBad && topContributionSets.fatBad.has(key)
-                ? "signal-alert"
-                : contributionSignalClass(food.fat_bad_g, totalFatBad, { alertPct: 30, attentionPct: 18 });
-              const sodiumSignal = excessContext.sodium && topContributionSets.sodium.has(key)
-                ? "signal-alert"
-                : nutrientSignalClass(food.sodium_mg, 400);
-              const sugarSignal = excessContext.sugar && topContributionSets.sugar.has(key)
-                ? "signal-alert"
-                : nutrientSignalClass(food.sugar_g, 8);
+            const foodDetails = enrichedFoodItems.length
+              ? `
+              <div class="nutrition-food-list">
+                ${enrichedFoodItems
+                  .map((food) => {
+                    const key = buildFoodKey(food.food_name);
+                    const proteinSignal =
+                      excessContext.protein && topContributionSets.protein.has(key)
+                        ? "signal-alert"
+                        : contributionSignalClass(food.protein_g, totalProtein, { alertPct: 35, attentionPct: 22 });
+                    const carbsSignal =
+                      excessContext.carbs && topContributionSets.carbs.has(key)
+                        ? "signal-alert"
+                        : contributionSignalClass(food.carbs_g, totalCarbs, { alertPct: 32, attentionPct: 18 });
+                    const fatSignal =
+                      excessContext.fat && topContributionSets.fat.has(key)
+                        ? "signal-alert"
+                        : contributionSignalClass(food.fat_g, totalFat, { alertPct: 32, attentionPct: 18 });
+                    const fatBadSignal =
+                      excessContext.fatBad && topContributionSets.fatBad.has(key)
+                        ? "signal-alert"
+                        : contributionSignalClass(food.fat_bad_g, totalFatBad, { alertPct: 30, attentionPct: 18 });
+                    const sodiumSignal =
+                      excessContext.sodium && topContributionSets.sodium.has(key)
+                        ? "signal-alert"
+                        : nutrientSignalClass(food.sodium_mg, 400);
+                    const sugarSignal =
+                      excessContext.sugar && topContributionSets.sugar.has(key)
+                        ? "signal-alert"
+                        : nutrientSignalClass(food.sugar_g, 8);
 
-              const impactTags = [];
-              if (excessContext.carbs && topContributionSets.carbs.has(key)) impactTags.push("carboidrato");
-              if (excessContext.fat && topContributionSets.fat.has(key)) impactTags.push("gordura total");
-              if (excessContext.fatBad && topContributionSets.fatBad.has(key)) impactTags.push("gordura ruim");
-              if (excessContext.sodium && topContributionSets.sodium.has(key)) impactTags.push("sódio");
-              if (excessContext.sugar && topContributionSets.sugar.has(key)) impactTags.push("açúcar");
-              const impactLine = impactTags.length
-                ? `<p class="nutrition-food-impact"><strong>Impacto no excesso do período:</strong> ${escapeHtml(impactTags.join(", "))}</p>`
-                : "";
+                    const impactTags = [];
+                    if (excessContext.carbs && topContributionSets.carbs.has(key)) impactTags.push("carboidrato");
+                    if (excessContext.fat && topContributionSets.fat.has(key)) impactTags.push("gordura total");
+                    if (excessContext.fatBad && topContributionSets.fatBad.has(key)) impactTags.push("gordura ruim");
+                    if (excessContext.sodium && topContributionSets.sodium.has(key)) impactTags.push("sódio");
+                    if (excessContext.sugar && topContributionSets.sugar.has(key)) impactTags.push("açúcar");
+                    const impactLine = impactTags.length
+                      ? `<p class="nutrition-food-impact"><strong>Impacto no excesso do período:</strong> ${escapeHtml(impactTags.join(", "))}</p>`
+                      : "";
 
-              return `
-                <article class="nutrition-food-item">
-                  <p>
-                    <strong>${escapeHtml(food.food_name)}</strong>
-                    <span class="tag ${qualityClass(food.quality)}">${escapeHtml(qualityLabel(food.quality))}</span>
-                  </p>
-                  <p class="nutrition-food-meta">
-                    <strong>Macros:</strong> ${fmtNumber(food.estimated_calories, 0)} kcal
-                  </p>
-                  <p class="nutrition-food-signals">
-                    <span class="signal ${proteinSignal}">P ${fmtNumber(food.protein_g)}g</span>
-                    <span class="signal ${carbsSignal}">C ${fmtNumber(food.carbs_g)}g</span>
-                    <span class="signal ${fatSignal}">G ${fmtNumber(food.fat_g)}g</span>
-                  </p>
-                  <p class="nutrition-food-signals">
-                    <span class="signal ${nutrientSignalClass(food.fat_good_g, 8)}">Gord. boa ${fmtNumber(food.fat_good_g)}g</span>
-                    <span class="signal ${fatBadSignal}">Gord. ruim ${fmtNumber(food.fat_bad_g)}g</span>
-                    <span class="signal ${sodiumSignal}">Sódio ${fmtNumber(food.sodium_mg, 0)} mg</span>
-                    <span class="signal ${sugarSignal}">Açúcar ${fmtNumber(food.sugar_g, 1)} g</span>
-                  </p>
-                  <p class="nutrition-food-signals">
-                    <span class="signal ${proteinSignal}">P ${fmtNumber(contributionPct(food.protein_g, totalProtein), 0)}%</span>
-                    <span class="signal ${carbsSignal}">C ${fmtNumber(contributionPct(food.carbs_g, totalCarbs), 0)}%</span>
-                    <span class="signal ${fatSignal}">G ${fmtNumber(contributionPct(food.fat_g, totalFat), 0)}%</span>
-                  </p>
-                  ${impactLine}
-                  <p class="nutrition-food-meta">Porção: ${escapeHtml(food.portion || "não informada")}</p>
-                  <p class="nutrition-food-meta">${escapeHtml(food.reason || "sem observação")}</p>
-                  <p class="nutrition-food-meta"><strong>Alternativas melhores:</strong> ${escapeHtml(foodBetterAlternatives(food))}</p>
-                </article>
-              `;
-            }).join("")}
-          </div>
-        `
-          : `<p class="muted">Sem itens detalhados nesta refeição.</p>`;
-
-        return `
-        <article class="nutrition-entry-card">
-          <header class="nutrition-entry-header">
-            <strong>${fmtDateTime(entry.recorded_at)}</strong>
-            <span class="tag ${qualityClass(quality)}">${escapeHtml(qualityLabel(quality))}</span>
-          </header>
-          <p class="nutrition-entry-text">${escapeHtml(summary)}</p>
-          <p class="nutrition-food-meta"><strong>Macros:</strong> ${fmtNumber(entry.estimated_calories, 0)} kcal</p>
-          <p class="nutrition-food-signals">
-            <span class="signal ${entryProteinStatus.signalClass}">P ${fmtNumber(entry.estimated_protein_g)}g</span>
-            <span class="signal ${entryCarbsStatus.signalClass}">C ${fmtNumber(entry.estimated_carbs_g)}g</span>
-            <span class="signal ${entryFatStatus.signalClass}">G ${fmtNumber(entry.estimated_fat_g)}g</span>
-          </p>
-          <p class="nutrition-food-signals">
-            <span class="signal ${entryFatGoodStatus.signalClass}">Gord. boa ${fmtNumber(entryFatGood)}g</span>
-            <span class="signal ${entryFatBadStatus.signalClass}">Gord. ruim ${fmtNumber(entryFatBad)}g</span>
-          </p>
-          <p class="nutrition-food-meta"><strong>Sinais IA:</strong> Sódio ${risk.sodium_alert ? "atenção" : "ok"} | Açúcar ${risk.sugar_alert ? "atenção" : "ok"}</p>
-          ${foodDetails}
-          ${
-            entry.recommended_action
-              ? `<p class="nutrition-food-meta"><strong>Ação:</strong> ${escapeHtml(entry.recommended_action)}</p>`
-              : ""
-          }
-          <div class="nutrition-edit-box">
-            <button class="btn-ghost nutrition-edit-toggle" type="button">Editar lançamento</button>
-            <form class="stack nutrition-edit-form is-hidden" data-entry-id="${escapeHtml(entry.id)}">
-              <label class="filter-field">
-                <span>Grupo alimentar</span>
-                <select name="meal_slot">${mealSlotOptionsHtml(entrySlot)}</select>
-              </label>
-              <label class="filter-field">
-                <span>Resumo ajustado</span>
-                <textarea name="summary" rows="2" required>${escapeHtml(summary)}</textarea>
-              </label>
-              <label class="filter-field">
-                <span>Alimentos (um por linha: alimento | porção)</span>
-                <textarea name="food_items_text" rows="4" placeholder="Ex.: Suco de limão | 1 copo">${escapeHtml(editorFoodItemsText)}</textarea>
-              </label>
-              <label class="filter-field">
-                <span>Data/hora do registro</span>
-                <input name="recorded_at" type="datetime-local" value="${escapeHtml(editorRecordedAt)}" />
-              </label>
-              <div class="nutrition-edit-actions">
-                <button class="btn-secondary" type="submit">Salvar edição</button>
-                <button class="btn-ghost nutrition-edit-cancel" type="button">Cancelar</button>
+                    return `
+                    <article class="nutrition-food-item">
+                      <p>
+                        <strong>${escapeHtml(food.food_name)}</strong>
+                        <span class="tag ${qualityClass(food.quality)}">${escapeHtml(qualityLabel(food.quality))}</span>
+                      </p>
+                      <p class="nutrition-food-meta">
+                        <strong>Macros:</strong> ${fmtNumber(food.estimated_calories, 0)} kcal
+                      </p>
+                      <p class="nutrition-food-signals">
+                        <span class="signal ${proteinSignal}">P ${fmtNumber(food.protein_g)}g</span>
+                        <span class="signal ${carbsSignal}">C ${fmtNumber(food.carbs_g)}g</span>
+                        <span class="signal ${fatSignal}">G ${fmtNumber(food.fat_g)}g</span>
+                      </p>
+                      <p class="nutrition-food-signals">
+                        <span class="signal ${nutrientSignalClass(food.fat_good_g, 8)}">Gord. boa ${fmtNumber(food.fat_good_g)}g</span>
+                        <span class="signal ${fatBadSignal}">Gord. ruim ${fmtNumber(food.fat_bad_g)}g</span>
+                        <span class="signal ${sodiumSignal}">Sódio ${fmtNumber(food.sodium_mg, 0)} mg</span>
+                        <span class="signal ${sugarSignal}">Açúcar ${fmtNumber(food.sugar_g, 1)} g</span>
+                      </p>
+                      <p class="nutrition-food-signals">
+                        <span class="signal ${proteinSignal}">P ${fmtNumber(contributionPct(food.protein_g, totalProtein), 0)}%</span>
+                        <span class="signal ${carbsSignal}">C ${fmtNumber(contributionPct(food.carbs_g, totalCarbs), 0)}%</span>
+                        <span class="signal ${fatSignal}">G ${fmtNumber(contributionPct(food.fat_g, totalFat), 0)}%</span>
+                      </p>
+                      ${impactLine}
+                      <p class="nutrition-food-meta">Porção: ${escapeHtml(food.portion || "não informada")}</p>
+                      <p class="nutrition-food-meta">${escapeHtml(food.reason || "sem observação")}</p>
+                      <p class="nutrition-food-meta"><strong>Alternativas melhores:</strong> ${escapeHtml(foodBetterAlternatives(food))}</p>
+                    </article>
+                  `;
+                  })
+                  .join("")}
               </div>
-            </form>
-          </div>
-        </article>
-      `;
-      }).join("");
+            `
+              : `<p class="muted">Sem itens detalhados nesta refeição.</p>`;
 
-      return `
-      <article class="history-item">
-        <header>
-          <strong>${slot.label}</strong>
-          <span class="tag quality-default">${entries.length} registro(s)</span>
-        </header>
-        <p class="nutrition-food-meta"><strong>Motivo:</strong> ${escapeHtml(slotReason)}</p>
-        <p class="nutrition-food-meta"><strong>Mensagem IA:</strong> ${escapeHtml(slotWeekly?.message || "Sem mensagem.")}</p>
-        ${entries.length ? detailedEntries : `<p class="muted">Sem registro neste período.</p>`}
-      </article>
-    `;
-    }).join("");
+            return `
+            <article class="nutrition-entry-card">
+              <header class="nutrition-entry-header">
+                <strong>${fmtDateTime(entry.recorded_at)}</strong>
+                <span class="tag ${qualityClass(quality)}">${escapeHtml(qualityLabel(quality))}</span>
+              </header>
+              <p class="nutrition-entry-text">${escapeHtml(summary)}</p>
+              <p class="nutrition-food-meta"><strong>Macros:</strong> ${fmtNumber(entry.estimated_calories, 0)} kcal</p>
+              <p class="nutrition-food-signals">
+                <span class="signal ${entryProteinStatus.signalClass}">P ${fmtNumber(entry.estimated_protein_g)}g</span>
+                <span class="signal ${entryCarbsStatus.signalClass}">C ${fmtNumber(entry.estimated_carbs_g)}g</span>
+                <span class="signal ${entryFatStatus.signalClass}">G ${fmtNumber(entry.estimated_fat_g)}g</span>
+              </p>
+              <p class="nutrition-food-signals">
+                <span class="signal ${entryFatGoodStatus.signalClass}">Gord. boa ${fmtNumber(entryFatGood)}g</span>
+                <span class="signal ${entryFatBadStatus.signalClass}">Gord. ruim ${fmtNumber(entryFatBad)}g</span>
+              </p>
+              <p class="nutrition-food-meta"><strong>Sinais IA:</strong> Sódio ${risk.sodium_alert ? "atenção" : "ok"} | Açúcar ${risk.sugar_alert ? "atenção" : "ok"}</p>
+              ${foodDetails}
+              ${
+                entry.recommended_action
+                  ? `<p class="nutrition-food-meta"><strong>Ação:</strong> ${escapeHtml(entry.recommended_action)}</p>`
+                  : ""
+              }
+              <div class="nutrition-edit-box">
+                <button class="btn-ghost nutrition-edit-toggle" type="button">Editar lançamento</button>
+                <form class="stack nutrition-edit-form is-hidden" data-entry-id="${escapeHtml(entry.id)}">
+                  <label class="filter-field">
+                    <span>Grupo alimentar</span>
+                    <select name="meal_slot">${mealSlotOptionsHtml(entrySlot)}</select>
+                  </label>
+                  <label class="filter-field">
+                    <span>Resumo ajustado</span>
+                    <textarea name="summary" rows="2" required>${escapeHtml(summary)}</textarea>
+                  </label>
+                  <label class="filter-field">
+                    <span>Alimentos (um por linha: alimento | porção)</span>
+                    <textarea name="food_items_text" rows="4" placeholder="Ex.: Suco de limão | 1 copo">${escapeHtml(editorFoodItemsText)}</textarea>
+                  </label>
+                  <label class="filter-field">
+                    <span>Data/hora do registro</span>
+                    <input name="recorded_at" type="datetime-local" value="${escapeHtml(editorRecordedAt)}" />
+                  </label>
+                  <div class="nutrition-edit-actions">
+                    <button class="btn-secondary" type="submit">Salvar edição</button>
+                    <button class="btn-ghost nutrition-edit-cancel" type="button">Cancelar</button>
+                  </div>
+                </form>
+              </div>
+            </article>
+          `;
+          })
+          .join("");
+
+        const slotContent = entries.length
+          ? `
+            <p class="nutrition-food-meta"><strong>Motivo:</strong> ${escapeHtml(slotReason)}</p>
+            <p class="nutrition-food-meta"><strong>Mensagem IA:</strong> ${escapeHtml(slotWeekly?.message || "Sem mensagem.")}</p>
+            ${detailedEntries}
+          `
+          : `<p class="muted">Sem registro neste período.</p>`;
+
+        return [slot.key, slotContent];
+      })
+    );
+
     renderWeeklyCards();
   }
+
+  mealsContainer.innerHTML = MEAL_SLOTS_CORE.map((slot) => {
+    const metric = slotMetrics[slot.key] || { entries: [], calories: 0, goal: 0, statusClass: "calorie-ok" };
+    const entries = metric.entries || [];
+    const latest = entries[0] || null;
+    const latestQuality = latest?.meal_quality || "sem registro";
+    const detailHtml = slotDetailCards[slot.key] || `<p class="muted">Sem registro neste período.</p>`;
+
+    return `
+      <article class="meal-card">
+        <h4>${slot.label}</h4>
+        <p><strong>${entries.length}</strong> registro(s)</p>
+        <p class="tag ${qualityClass(latestQuality)}">${escapeHtml(qualityLabel(latestQuality))}</p>
+        <p class="calorie-line ${metric.statusClass}">
+          <strong>${fmtNumber(metric.calories, 0)} / ${fmtNumber(metric.goal, 0)} kcal</strong>
+        </p>
+        <details class="meal-inline-details">
+          <summary>Detalhado de alimentação</summary>
+          <div class="meal-inline-content">
+            ${detailHtml}
+          </div>
+        </details>
+      </article>
+    `;
+  }).join("");
 }
 
 function renderHistories() {
