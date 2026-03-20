@@ -2206,22 +2206,48 @@ h4,
   gap: 0.45rem;
 }
 
+.nutrition-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.nutrition-metrics .metric {
+  padding: 0.62rem 0.66rem;
+}
+
+.nutrition-metrics .metric h2 {
+  font-size: 0.8rem;
+  min-height: 1.7em;
+}
+
+.nutrition-metrics .metric-value {
+  margin-top: 0.28rem;
+  font-size: 1.1rem;
+}
+
+.nutrition-metrics .metric-sub {
+  margin-top: 0.18rem;
+  font-size: 0.72rem;
+  line-height: 1.22;
+}
+
 @media (max-width: 700px) {
   body {
     padding-top: max(0.2rem, env(safe-area-inset-top));
   }
 
   .layout {
-    margin-top: calc(env(safe-area-inset-top) + 1.35rem);
+    margin-top: calc(env(safe-area-inset-top) + 0.82rem);
   }
 
   .tabs {
-    top: calc(env(safe-area-inset-top) + 0.55rem);
+    top: calc(env(safe-area-inset-top) + 0.18rem);
     flex-wrap: nowrap !important;
     overflow-x: auto;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
+    display: flex;
   }
 
   .tabs::-webkit-scrollbar {
@@ -2247,8 +2273,32 @@ h4,
   }
 
   .filters-row {
-    grid-template-columns: 32px minmax(0, 1fr) 32px 56px;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    overflow-x: auto;
     gap: 0.22rem;
+    scrollbar-width: none;
+  }
+
+  .filters-row::-webkit-scrollbar {
+    display: none;
+  }
+
+  #filter-prev-day,
+  #filter-next-day,
+  .filter-from-field,
+  .filter-to-field,
+  .filter-apply-btn,
+  .filter-today-btn {
+    grid-column: auto;
+    grid-row: auto;
+    flex: 0 0 auto;
+  }
+
+  .filter-from-field,
+  .filter-to-field {
+    min-width: 130px;
   }
 
   .compact-field input {
@@ -2269,6 +2319,7 @@ h4,
     padding: 0.2rem 0.28rem;
     font-size: 0.72rem;
     border-radius: 9px;
+    min-width: 62px;
   }
 
   .filter-summary {
@@ -2284,5 +2335,30 @@ h4,
 
   .meal-inline-details summary {
     font-size: 0.74rem;
+  }
+
+  .nutrition-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.38rem;
+  }
+
+  .nutrition-metrics .metric {
+    padding: 0.5rem 0.52rem;
+  }
+
+  .nutrition-metrics .metric h2 {
+    font-size: 0.7rem;
+    min-height: 1.5em;
+  }
+
+  .nutrition-metrics .metric-value {
+    margin-top: 0.18rem;
+    font-size: 0.98rem;
+  }
+
+  .nutrition-metrics .metric-sub {
+    margin-top: 0.14rem;
+    font-size: 0.64rem;
+    line-height: 1.2;
   }
 }
