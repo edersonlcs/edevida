@@ -126,6 +126,11 @@ body {
   gap: 0.55rem;
 }
 
+.hero {
+  display: grid;
+  gap: 0.45rem;
+}
+
 .section-head {
   display: flex;
   align-items: center;
@@ -259,6 +264,10 @@ body {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.8rem;
+}
+
+.metrics-top {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .nutrition-metrics {
@@ -819,6 +828,45 @@ body {
   background: linear-gradient(180deg, rgba(236, 240, 242, 0.9), rgba(246, 248, 249, 0.9));
 }
 
+.nutrition-details-toggle {
+  display: grid;
+  gap: 0.72rem;
+}
+
+.nutrition-details-toggle summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 1.04rem;
+  font-weight: 700;
+}
+
+.nutrition-details-toggle summary::-webkit-details-marker {
+  display: none;
+}
+
+.nutrition-details-toggle summary::after {
+  content: "Expandir";
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.24rem 0.56rem;
+  background: rgba(19, 39, 43, 0.1);
+  color: var(--ink-soft);
+}
+
+.nutrition-details-toggle[open] summary::after {
+  content: "Recolher";
+  background: rgba(47, 143, 131, 0.18);
+  color: #0f5d54;
+}
+
 .weekly-group-grid {
   display: grid;
   gap: 0.7rem;
@@ -1061,13 +1109,6 @@ body {
   font-family: "Space Grotesk", sans-serif;
 }
 
-.telegram-steps {
-  margin: 0;
-  padding-left: 1.2rem;
-  display: grid;
-  gap: 0.45rem;
-}
-
 h3 {
   margin: 0 0 0.72rem;
   font-family: "Space Grotesk", sans-serif;
@@ -1280,7 +1321,11 @@ textarea {
 
 @media (max-width: 980px) {
   .metrics {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .metrics-top {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .meal-grid {
@@ -1297,6 +1342,10 @@ textarea {
 
   .clinical-grid {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .profile-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .charts-grid {
@@ -1334,14 +1383,56 @@ textarea {
     padding: 0.8rem;
   }
 
+  .hero {
+    padding: 0.72rem;
+    gap: 0.38rem;
+  }
+
+  .hero h1 {
+    font-size: clamp(1.8rem, 9vw, 2.25rem);
+    margin: 0.05rem 0;
+    line-height: 1;
+  }
+
+  .subtitle {
+    margin-top: 0.18rem;
+    font-size: 0.95rem;
+    line-height: 1.3;
+  }
+
+  .auth-user-bar {
+    margin-top: 0.25rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.45rem;
+  }
+
+  #auth-user-label {
+    display: inline-block;
+    max-width: 62%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   .hero-actions {
+    margin-top: 0.5rem;
     display: grid;
     grid-template-columns: 1fr 1fr;
+    gap: 0.42rem;
   }
 
   .hero-actions .btn-primary,
   .hero-actions .btn-secondary {
     width: 100%;
+    padding: 0.56rem 0.64rem;
+    font-size: 0.95rem;
+  }
+
+  .status-message {
+    margin-top: 0.42rem;
+    padding: 0.48rem 0.58rem;
+    font-size: 0.84rem;
   }
 
   .two-cols {
@@ -1376,7 +1467,7 @@ textarea {
   .filters-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 0.5rem;
+    gap: 0.42rem;
     align-items: end;
   }
 
@@ -1384,8 +1475,27 @@ textarea {
     min-width: 0;
   }
 
+  .filter-field span {
+    font-size: 0.74rem;
+  }
+
+  input,
+  textarea,
+  select {
+    padding: 0.58rem 0.66rem;
+  }
+
+  .btn-primary,
+  .btn-secondary,
+  .btn-ghost {
+    padding: 0.56rem 0.66rem;
+  }
+
   .filter-nav-btn {
     width: 100%;
+    min-width: 0;
+    padding: 0.48rem;
+    font-size: 0.94rem;
   }
 
   .chart-card canvas {
@@ -1394,6 +1504,33 @@ textarea {
 
   .meal-grid {
     grid-template-columns: 1fr;
+  }
+
+  .metrics {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.55rem;
+  }
+
+  .metrics-top {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .metrics-top .metric {
+    padding: 0.62rem;
+  }
+
+  .metrics-top .metric-value {
+    font-size: 1.45rem;
+    margin-top: 0.3rem;
+  }
+
+  .metrics-top .metric-sub {
+    font-size: 0.76rem;
+    margin-top: 0.24rem;
+  }
+
+  .metrics-top .metric h2 {
+    font-size: 0.84rem;
   }
 
   .food-grid {
@@ -1410,6 +1547,37 @@ textarea {
 
   .clinical-grid {
     grid-template-columns: 1fr;
+  }
+
+  .profile-grid {
+    gap: 0.45rem;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .profile-card {
+    padding: 0.56rem;
+    gap: 0.14rem;
+  }
+
+  .profile-label {
+    font-size: 0.78rem;
+  }
+
+  .profile-value {
+    font-size: 1.02rem;
+  }
+
+  .profile-note {
+    font-size: 0.75rem;
+  }
+
+  .nutrition-details-toggle summary {
+    font-size: 0.98rem;
+  }
+
+  .nutrition-details-toggle summary::after {
+    font-size: 0.68rem;
+    padding: 0.2rem 0.48rem;
   }
 
   .filter-summary {

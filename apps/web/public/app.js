@@ -41,7 +41,6 @@ const state = {
     workouts: [],
     nutrition: [],
     nutritionWeek: [],
-    telegramWebhook: null,
   },
   nutritionDraft: null,
   nutritionChatHistory: [],
@@ -1381,7 +1380,6 @@ function renderSystemUsagePanel() {
     ["hidratacao", "Hidratação"],
     ["treinos", "Treinos"],
     ["interacoes_ia", "Interações IA"],
-    ["updates_telegram", "Updates Telegram"],
   ];
 
   countsNode.innerHTML = countCards.map(([key, label]) =>
@@ -4268,38 +4266,6 @@ function renderCharts() {
   renderBodyMeasurementsChart();
 }
 
-async function loadTelegramWebhookInfo() {
-  try {
-    const payload = await apiJson("/api/telegram/webhook-info");
-    state.cache.telegramWebhook = payload.info || null;
-  } catch (err) {
-    state.cache.telegramWebhook = {
-      error: err.message,
-    };
-  }
-}
-
-function renderTelegramInfo() {
-  const info = state.cache.telegramWebhook;
-  if (!info) {
-    writeOutput("telegram-webhook-status", "Sem dados");
-    return;
-  }
-
-  const simplified = info.error
-    ? { ok: false, error: info.error }
-    : {
-        ok: true,
-        webhook_url: info.url,
-        pending_updates: info.pending_update_count,
-        last_error_date: info.last_error_date,
-        last_error_message: info.last_error_message,
-        ip_address: info.ip_address,
-      };
-
-  writeOutput("telegram-webhook-status", simplified);
-}
-
 function findAiProfileByKey(profileKey) {
   const profiles = state.cache.aiInfo?.ai?.profiles || [];
   return profiles.find((item) => item?.key === profileKey) || null;
@@ -4477,9 +4443,6 @@ function renderAllFromStateCache() {
   } else {
     state.ui.pendingDashboardChartsRender = true;
   }
-
-  loadTelegramWebhookInfo().catch(() => {});
-  renderTelegramInfo();
 }
 
 function bindForm(formId, handler) {

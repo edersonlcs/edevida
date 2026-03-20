@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/web/styles.css?v=20260319h" />
+    <link rel="stylesheet" href="/web/styles.css?v=20260319n" />
   </head>
   <body>
     <div class="bg-layer"></div>
@@ -58,7 +58,6 @@
         <button class="tab-button" data-tab="exames">Exames</button>
         <button class="tab-button" data-tab="historico">Histórico</button>
         <button class="tab-button" data-tab="cadastro">Info</button>
-        <button class="tab-button" data-tab="telegram">Telegram</button>
         <button class="tab-button" data-tab="ia">IA</button>
       </nav>
 
@@ -87,7 +86,7 @@
       </section>
 
       <section id="tab-dashboard" class="tab-panel is-active">
-        <section class="metrics">
+        <section class="metrics metrics-top">
           <article class="metric card">
             <h2>Água hoje</h2>
             <p id="metric-water" class="metric-value">-</p>
@@ -241,8 +240,12 @@
         </article>
 
         <article class="card">
-          <h3>Detalhado de alimentação</h3>
-          <div id="nutrition-details-list" class="history-list"></div>
+          <details id="nutrition-details-toggle" class="nutrition-details-toggle">
+            <summary>
+              <span>Detalhado de alimentação</span>
+            </summary>
+            <div id="nutrition-details-list" class="history-list"></div>
+          </details>
         </article>
 
         <article class="card nutrition-weekly-panel">
@@ -614,47 +617,6 @@
         </section>
       </section>
 
-      <section id="tab-telegram" class="tab-panel">
-        <article class="card">
-          <h3>Como usar no Telegram (passo a passo)</h3>
-          <ol class="telegram-steps">
-            <li>Abra seu bot no Telegram e envie <code>/start</code>.</li>
-            <li>Para ver ajuda rápida, envie <code>/help</code>.</li>
-            <li>Para abrir este painel, envie <code>/painel</code>.</li>
-            <li>Para resumo completo do dia, envie <code>/resumo</code>.</li>
-            <li>Para visão do corpo inteiro (5 níveis), envie <code>/corpo</code>.</li>
-            <li>Para ver foco de exames, envie <code>/exames</code>.</li>
-            <li>Para conversar sem registrar refeição, use <code>/chat sua pergunta</code>.</li>
-            <li>Para registrar alimentação, envie texto, foto ou áudio da refeição.</li>
-            <li>Para água, inclua no texto algo como: "bebi 500 ml de água".</li>
-            <li>No Telegram agora o fluxo é por rascunho: envie refeição/foto/áudio, ajuste se precisar, e confirme em <strong>Registrar refeicao</strong>.</li>
-            <li>Para corrigir rascunho (ex.: água x suco), use <strong>Corrigir rascunho</strong> e envie a frase de correção.</li>
-            <li>Botões diários principais: <strong>Resumo de hoje</strong>, <strong>Status do corpo</strong>, <strong>Registrar refeicao</strong>, <strong>Sugestao proximo refeicao</strong>, <strong>Plano de hoje</strong>, <strong>Falar com IA</strong>, <strong>Painel</strong> e <strong>Help</strong>.</li>
-            <li>Tudo que for registrado no Telegram aparece aqui no painel.</li>
-          </ol>
-        </article>
-
-        <article class="card">
-          <h3>Status do webhook Telegram</h3>
-          <pre id="telegram-webhook-status" class="output">Carregando status...</pre>
-        </article>
-
-        <article class="card">
-          <h3>Exemplos que você pode enviar</h3>
-          <div class="history-list">
-            <article class="history-item">
-              <p><strong>Café da manhã:</strong> 1 pão francês, 2 ovos e café sem açúcar.</p>
-            </article>
-            <article class="history-item">
-              <p><strong>Água:</strong> bebi 400 ml agora.</p>
-            </article>
-            <article class="history-item">
-              <p><strong>Dúvida:</strong> "Vou comer pizza hoje, como ajustar no resto do dia?"</p>
-            </article>
-          </div>
-        </article>
-      </section>
-
       <section id="tab-ia" class="tab-panel">
         <article class="card">
           <h3>Perfil de IA (com seleção)</h3>
@@ -714,7 +676,7 @@
 
       <footer class="card footer">
         <p>
-          Telegram: envie texto, foto ou áudio para o bot. Comandos: <code>/start</code>, <code>/help</code>, <code>/painel</code>, <code>/resumo</code>, <code>/corpo</code>, <code>/exames</code>, <code>/chat</code>.
+          EdeVida Web + APK: use as abas para registrar alimentação, água, anexos e evolução corporal.
         </p>
       </footer>
     </main>
@@ -725,11 +687,11 @@
       <button class="mobile-tab-button" data-tab="registros">Registros</button>
       <button class="mobile-tab-button" data-tab="anexos">Anexos</button>
       <button class="mobile-tab-button" data-tab="exames">Exames</button>
-      <button class="mobile-tab-button" data-tab="telegram">Telegram</button>
+      <button class="mobile-tab-button" data-tab="cadastro">Info</button>
     </nav>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="/web/app.js?v=20260319m" type="module"></script>
+    <script src="/web/app.js?v=20260319n" type="module"></script>
   </body>
 </html>
