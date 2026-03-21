@@ -4573,8 +4573,8 @@ function syncStickyMobileShellHeight() {
   }
 
   const shellHeight = Math.ceil(shell.getBoundingClientRect().height || 0);
-  const safeGap = 34;
-  const finalHeight = Math.max(224, shellHeight + safeGap);
+  const safeGap = 14;
+  const finalHeight = Math.max(172, shellHeight + safeGap);
   const value = `${finalHeight}px`;
   spacer.style.height = value;
   document.documentElement.style.setProperty("--sticky-mobile-shell-height", value);
