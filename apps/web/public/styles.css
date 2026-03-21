@@ -3504,15 +3504,56 @@ body {
 }
 
 .registro-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
   min-height: 33px;
   padding: 0.24rem 0.62rem;
   border-radius: 10px;
+}
+
+.registro-mode-btn .bi {
+  display: inline-grid;
+  place-items: center;
+  width: 1.28em;
+  height: 1.28em;
+  border-radius: 999px;
+  font-size: 0.82em;
+}
+
+.registro-mode-btn[data-registro-mode="texto"] .bi {
+  color: #3f6fd8;
+  background: rgba(63, 111, 216, 0.16);
+}
+
+.registro-mode-btn[data-registro-mode="foto"] .bi {
+  color: #2f8b74;
+  background: rgba(47, 139, 116, 0.16);
+}
+
+.registro-mode-btn[data-registro-mode="voz"] .bi {
+  color: #b36a1f;
+  background: rgba(179, 106, 31, 0.18);
+}
+
+.registro-mode-btn[data-registro-mode="agua"] .bi {
+  color: #1e87d8;
+  background: rgba(30, 135, 216, 0.16);
+}
+
+.registro-mode-btn[data-registro-mode="treino"] .bi {
+  color: #bf4f2c;
+  background: rgba(191, 79, 44, 0.16);
 }
 
 .registro-mode-btn.is-active {
   border-color: rgba(47, 143, 131, 0.38);
   background: linear-gradient(135deg, rgba(47, 143, 131, 0.2), rgba(47, 143, 131, 0.13));
   color: #0f5d54;
+}
+
+.registro-mode-btn.is-active .bi {
+  box-shadow: inset 0 0 0 1px rgba(15, 93, 84, 0.22);
 }
 
 .registros-mode-panels {
@@ -3627,9 +3668,16 @@ body {
   }
 
   .registro-mode-btn {
+    gap: 0.3rem;
     min-height: 31px;
     padding: 0.2rem 0.5rem;
     font-size: 0.68rem;
+  }
+
+  .registro-mode-btn .bi {
+    width: 1.22em;
+    height: 1.22em;
+    font-size: 0.78em;
   }
 
   .registros-mode-panel {
